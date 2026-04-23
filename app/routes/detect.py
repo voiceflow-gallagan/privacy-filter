@@ -17,10 +17,22 @@ router = APIRouter()
 
 
 def _apply_mask(text: str, entities: list[Entity], mask_char: str) -> str:
-    parts = sorted(entities, key=lambda e: e.start, reverse=True)
+    if not entities:
+        return text
+    # Union overlapping/touching ranges so each masked region is replaced once.
+    # Without this, two spans like [687,706] and [699,706] produce mask
+    # fragments ("TED]") because the right-to-left replacement reads from a
+    # string whose positions have already shifted.
+    ranges = sorted(((e.start, e.end) for e in entities), key=lambda r: r)
+    merged: list[list[int]] = []
+    for s, e in ranges:
+        if merged and s <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], e)
+        else:
+            merged.append([s, e])
     out = text
-    for e in parts:
-        out = out[: e.start] + mask_char + out[e.end :]
+    for s, e in reversed(merged):
+        out = out[:s] + mask_char + out[e:]
     return out
 
 

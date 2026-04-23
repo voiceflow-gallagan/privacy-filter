@@ -28,6 +28,34 @@ def test_mask_respects_label_filter(client):
     assert body["entity_count"] == 1
 
 
+def test_mask_with_overlapping_entities_does_not_leak(client, patch_model):
+    """
+    Regression: when two overlapping spans are both returned (e.g. after word-
+    boundary expansion pushes adjacent spans into overlap), the mask must
+    produce a single [REDACTED] over their union, not partial-token leakage
+    like '[REDACTEDED]' or 'TED]'.
+    """
+    # Swap fake_inference to return overlapping spans by hand
+    overlapping_text = "chez FNAC Champs-Élysées and more"
+    fake = patch_model.run_inference
+
+    def _mock(text, mode):
+        if text == overlapping_text:
+            return [
+                {"label": "account_number",  "start": 5, "end": 24, "text": "FNAC Champs-Élysées", "score": 0.7},
+                {"label": "private_address", "start": 17, "end": 24, "text": "Élysées",             "score": 0.6},
+            ]
+        return fake(text, mode)
+    fake.impl = _mock
+
+    r = client.post("/mask", json={"text": overlapping_text})
+    body = r.json()
+    # Exactly one mask token covers the union, rest of text untouched.
+    assert body["masked_text"] == "chez [REDACTED] and more"
+    # But two entities still reported — overlap resolution is a mask-only concern.
+    assert body["entity_count"] == 2
+
+
 def test_mask_unknown_label_is_422(client):
     r = client.post("/mask", json={"text": "x", "labels": ["bogus"]})
     assert r.status_code == 422
