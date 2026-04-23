@@ -42,6 +42,57 @@ async def run_inference_async(text: str, mode: str) -> list[dict]:
         return await asyncio.to_thread(state.run_inference, text, mode)
 
 
+def postprocess_spans(text: str, spans: list[dict],
+                      max_whitespace_gap: int = 4) -> list[dict]:
+    """Clean up raw pipeline spans.
+
+    1. Trim leading/trailing whitespace from each span (prevents the mask from
+       eating adjacent spaces, so "Hi Alice" masks to "Hi [REDACTED]" not "Hi[REDACTED]").
+    2. Merge same-label spans that overlap, touch, or are separated only by
+       whitespace. The model's BIOES decoding often fragments a single entity
+       into multiple adjacent sub-spans ("Marie Dubois" → [" Marie", "Dub", "ois"]);
+       this stitches them back together.
+
+    Does NOT merge across punctuation or word characters — two emails separated
+    by ", " stay separate. `max_whitespace_gap` caps how much whitespace a merge
+    can bridge; 4 chars accommodates IBAN/phone/credit-card grouping spaces
+    while rejecting larger structural gaps.
+    """
+    # 1. Trim whitespace
+    trimmed: list[dict] = []
+    for s in spans:
+        start, end = int(s["start"]), int(s["end"])
+        while start < end and text[start].isspace():
+            start += 1
+        while end > start and text[end - 1].isspace():
+            end -= 1
+        if start < end:
+            trimmed.append({**s,
+                            "start": start, "end": end,
+                            "text": text[start:end]})
+
+    if not trimmed:
+        return trimmed
+
+    # 2. Sort and merge same-label overlapping / whitespace-only-gap spans
+    trimmed.sort(key=lambda s: (s["start"], s["end"]))
+    merged: list[dict] = [dict(trimmed[0])]
+    for s in trimmed[1:]:
+        last = merged[-1]
+        if s["label"] == last["label"]:
+            overlap_or_touch = s["start"] <= last["end"]
+            gap = text[last["end"]:s["start"]]
+            bridge = (len(gap) <= max_whitespace_gap and gap.isspace())
+            if overlap_or_touch or bridge:
+                new_end = max(last["end"], s["end"])
+                last["end"] = new_end
+                last["text"] = text[last["start"]:new_end]
+                last["score"] = max(last["score"], s["score"])
+                continue
+        merged.append(dict(s))
+    return merged
+
+
 def load_model() -> None:
     """
     Load the real privacy-filter model. Called from FastAPI startup.
@@ -69,7 +120,7 @@ def load_model() -> None:
 
     def _run(text: str, mode: str) -> list[dict]:
         raw = pipe(text)
-        return [
+        spans = [
             {
                 "label": r["entity_group"],
                 "start": int(r["start"]),
@@ -79,6 +130,7 @@ def load_model() -> None:
             }
             for r in raw
         ]
+        return postprocess_spans(text, spans)
 
     _state = ModelState(
         tokenizer=tokenizer,

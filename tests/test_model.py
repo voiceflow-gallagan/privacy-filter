@@ -56,3 +56,87 @@ async def test_run_inference_async_uses_semaphore(monkeypatch, fast_tokenizer):
         for _ in range(5)
     ])
     assert max_in_flight == 1
+
+
+# ---------- postprocess_spans ----------
+
+def _span(label, start, end, score=0.9):
+    return {"label": label, "start": start, "end": end,
+            "text": None, "score": score}
+
+
+def test_postprocess_trims_leading_whitespace():
+    text = "Hi Alice Smith, welcome"
+    spans = [_span("private_person", 2, 14)]   # includes leading space: " Alice Smith"
+    out = model_module.postprocess_spans(text, spans)
+    assert len(out) == 1
+    assert out[0]["start"] == 3
+    assert out[0]["end"] == 14
+    assert out[0]["text"] == "Alice Smith"
+
+
+def test_postprocess_trims_trailing_whitespace():
+    text = "call +33 6 42 18 and done"
+    spans = [_span("private_phone", 5, 17)]  # " 6 42 18 " → trim leading/trailing spaces
+    out = model_module.postprocess_spans(text, spans)
+    assert text[out[0]["start"]:out[0]["end"]] == "+33 6 42 18"
+
+
+def test_postprocess_merges_overlapping_fragments():
+    """Classic BIOES fragmentation: three overlapping spans for 'Marie Dubois'."""
+    text = "Welcome, Marie Dubois!"
+    spans = [
+        _span("private_person", 8, 14, 0.92),   # " Marie"
+        _span("private_person", 8, 18, 0.88),   # " Marie Dub"
+        _span("private_person", 18, 21, 0.85),  # "ois"
+    ]
+    out = model_module.postprocess_spans(text, spans)
+    assert len(out) == 1
+    assert out[0]["text"] == "Marie Dubois"
+    assert out[0]["score"] == 0.92  # highest of the merged fragments
+
+
+def test_postprocess_merges_across_single_space_gap():
+    """IBAN/phone/credit-card: fragments separated by a space should merge."""
+    text = "IBAN: FR76 3000 4000 0312"
+    spans = [
+        _span("account_number", 6, 10),   # "FR76"
+        _span("account_number", 11, 15),  # "3000"
+        _span("account_number", 16, 20),  # "4000"
+        _span("account_number", 21, 25),  # "0312"
+    ]
+    out = model_module.postprocess_spans(text, spans)
+    assert len(out) == 1
+    assert out[0]["text"] == "FR76 3000 4000 0312"
+
+
+def test_postprocess_does_not_merge_across_punctuation():
+    """Two emails separated by ', ' must stay separate."""
+    text = "emails: a@x.com, b@y.com here"
+    spans = [
+        _span("private_email", 8, 15),   # "a@x.com"
+        _span("private_email", 17, 24),  # "b@y.com"
+    ]
+    out = model_module.postprocess_spans(text, spans)
+    assert len(out) == 2
+    assert out[0]["text"] == "a@x.com"
+    assert out[1]["text"] == "b@y.com"
+
+
+def test_postprocess_does_not_merge_different_labels():
+    """Adjacent spans with different labels stay separate."""
+    text = "Alice alice@x.com"
+    spans = [
+        _span("private_person", 0, 5),
+        _span("private_email", 6, 17),
+    ]
+    out = model_module.postprocess_spans(text, spans)
+    assert len(out) == 2
+    assert {o["label"] for o in out} == {"private_person", "private_email"}
+
+
+def test_postprocess_drops_all_whitespace_spans():
+    text = "hello   world"
+    spans = [_span("private_person", 5, 8)]  # all spaces
+    out = model_module.postprocess_spans(text, spans)
+    assert out == []
