@@ -82,6 +82,26 @@ def test_dedup_keeps_higher_score():
     assert out[0]["score"] == 0.95
 
 
+def test_offsets_are_correct_with_cjk_and_emoji(fast_tokenizer, fake_inference):
+    """Spans returned for chunked input must slice the original text correctly
+    even when chunks straddle multibyte characters."""
+    head = "你好世界 " * 200            # CJK
+    middle = "🎉🚀✨ " * 100             # emoji
+    text = head + "alice@example.com" + middle + head
+    result = detect_with_chunking(
+        text=text, tokenizer=fast_tokenizer, run_inference=fake_inference,
+        mode="balanced", chunk_size_tokens=400, overlap_tokens=64,
+        smart_split=False,
+    )
+    emails = [e for e in result.entities if e["label"] == "private_email"]
+    assert emails, "Expected the email to be detected"
+    for e in emails:
+        assert text[e["start"]:e["end"]] == "alice@example.com", (
+            f"Offset drift: text[{e['start']}:{e['end']}]="
+            f"{text[e['start']:e['end']]!r}"
+        )
+
+
 def test_dedup_keeps_different_labels_overlapping():
     from app.chunker import deduplicate_spans
     spans = [
