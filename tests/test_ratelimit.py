@@ -35,3 +35,12 @@ def test_rate_limit_disabled_means_unlimited(client_unlimited):
     for _ in range(20):
         r = client_unlimited.post("/detect", json={"text": "x"})
         assert r.status_code == 200
+
+
+def test_mask_does_not_double_consume_rate_limit(client_limited):
+    """Each /mask call must count as ONE rate limit slot, not two."""
+    for i in range(3):
+        r = client_limited.post("/mask", json={"text": "alice@example.com"})
+        assert r.status_code == 200, f"call {i+1} returned {r.status_code}"
+    r = client_limited.post("/mask", json={"text": "alice@example.com"})
+    assert r.status_code == 429

@@ -1,4 +1,16 @@
 # Use with: docker compose -f docker-compose.yml -f docker-compose.gpu.yml up
+#
+# EXPERIMENTAL: this override swaps the runtime base image to nvidia/cuda,
+# but that image lacks Python, the app code, and dependencies. To actually
+# run on GPU, either:
+#  (a) author a separate Dockerfile.gpu (FROM nvidia/cuda...) that installs
+#      Python 3.11, requirements.txt, and copies app/, then reference it via
+#      `build: { dockerfile: Dockerfile.gpu }` in place of `image:` below, OR
+#  (b) remove the `image:` override and pre-install torch+CUDA wheels in the
+#      base Dockerfile so the CPU image has GPU capability when run with
+#      `--gpus all`.
+# The shipped override reserves an NVIDIA GPU via `deploy.resources` — users
+# should treat it as a template rather than a turnkey path.
 services:
   pii-filter:
     image: nvidia/cuda:12.4.1-runtime-ubuntu22.04

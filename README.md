@@ -58,15 +58,16 @@ Throughput is bounded by `MAX_CONCURRENT_INFERENCES`. The model singleton avoids
 
 For ≥10 req/s on short inputs (≤2k tokens), tune `MAX_CONCURRENT_INFERENCES` based on your CPU core count (typical good value: cores − 1).
 
-## GPU
+## GPU (experimental)
 
-```bash
-docker compose -f docker-compose.yml -f docker-compose.gpu.yml up
-```
+A `docker-compose.gpu.yml` override is shipped as a **template** for GPU deployment. It reserves an NVIDIA GPU device but does not by itself produce a working image — the CUDA runtime base it references lacks Python 3.11 and the app code.
 
-Requires NVIDIA Container Toolkit on the host. The override pins `nvidia/cuda:12.4.1`; adjust the tag if your driver requires a different CUDA version.
+To run on GPU, you will need one of:
 
-> **Note:** the GPU override changes the runtime base image. Depending on your build setup you may need to maintain a separate `Dockerfile.gpu` to bake the application into a CUDA image. The shipped override is a starting point.
+1. **Author a `Dockerfile.gpu`** (`FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04`), install Python 3.11 + `requirements.txt`, and copy `app/` — then reference it via `build: { dockerfile: Dockerfile.gpu }` in `docker-compose.gpu.yml`.
+2. **Or** modify the base `Dockerfile` to install CUDA-enabled `torch` wheels and drop the `image:` override from `docker-compose.gpu.yml`, keeping only the `deploy.resources.reservations.devices` block.
+
+Both paths require NVIDIA Container Toolkit on the host. PRs welcome for a ready-made `Dockerfile.gpu`.
 
 ## Security
 
