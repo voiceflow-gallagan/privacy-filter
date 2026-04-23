@@ -30,8 +30,13 @@ def _filter_by_labels(spans: list[dict], allowed: frozenset[str] | None) -> list
     return [s for s in spans if s["label"] in allowed]
 
 
-async def _do_detect(request: Request, req: DetectRequest) -> DetectResponse:
-    """Core /detect logic without rate-limit decoration. Reused by /detect and /mask."""
+async def _do_detect(req: DetectRequest) -> DetectResponse:
+    """Core /detect logic without rate-limit decoration.
+
+    Reused by /detect, /mask, and the in-process MCP server. Does not take a
+    Starlette Request — rate limiting is applied by decorators on the public
+    route handlers.
+    """
     settings = get_settings()
     if len(req.text) > settings.max_text_length:
         raise HTTPException(
@@ -85,7 +90,7 @@ async def _do_detect(request: Request, req: DetectRequest) -> DetectResponse:
 @router.post("/detect", response_model=DetectResponse)
 @limiter.limit(current_limit)
 async def detect(request: Request, req: DetectRequest) -> DetectResponse:
-    return await _do_detect(request, req)
+    return await _do_detect(req)
 
 
 @router.post("/mask", response_model=MaskResponse)
@@ -95,7 +100,7 @@ async def mask(request: Request, req: MaskRequest) -> MaskResponse:
         text=req.text, mode=req.mode, mask=True,
         mask_char=req.mask_char, labels=req.labels,
     )
-    detect_resp = await _do_detect(request, detect_req)
+    detect_resp = await _do_detect(detect_req)
     return MaskResponse(
         masked_text=detect_resp.masked_text or req.text,
         entity_count=detect_resp.meta.entity_count,

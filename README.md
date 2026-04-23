@@ -5,7 +5,7 @@ Self-hosted PII detection and masking REST API powered by `openai/privacy-filter
 - Zero-config startup: `docker compose up`
 - Auto-chunking for inputs of any length (token-aligned, no offset drift)
 - Per-IP rate limiting (configurable)
-- Optional MCP sidecar for Claude Desktop integration
+- Built-in MCP server at `/mcp` (streamable-HTTP) for Claude Desktop and other MCP clients
 
 ## Quickstart
 
@@ -28,6 +28,7 @@ curl -X POST http://localhost:8080/detect \
 - `GET /health` — always 200 if process is alive; reports `model_loaded`.
 - `GET /ready` — 200 once model is loaded; 503 otherwise.
 - `GET /docs` — interactive OpenAPI UI.
+- `POST /mcp` — MCP streamable-HTTP endpoint (tools: `detect_pii`, `mask_pii`).
 
 ### Span offsets
 
@@ -78,9 +79,39 @@ Both paths require NVIDIA Container Toolkit on the host. PRs welcome for a ready
 
 ## MCP server
 
-See [`mcp_server/README.md`](mcp_server/README.md).
+The MCP server is mounted in the same FastAPI process at `/mcp` over the
+streamable-HTTP transport. There is no separate sidecar and no extra container
+to deploy.
 
-> **Install in a separate venv from the REST service.** The MCP SDK pulls in `sse-starlette` which requires a newer `starlette` than `fastapi==0.115.0` allows. Mixing both in one venv triggers a `pip check` warning and can break the FastAPI app on accidental upgrades. In production this is a non-issue: the REST service runs in Docker, while Claude Desktop launches the MCP server in its own Python environment.
+### Tools exposed
+
+- `detect_pii(text, mode?, labels?)` — returns `{ entities, entity_count }`.
+- `mask_pii(text, mode?, labels?, mask_char?)` — returns `{ masked_text, entity_count }`.
+
+Both dispatch to the same in-process detection pipeline as `POST /detect`; no
+HTTP self-loopback.
+
+### Configure an MCP client
+
+Point any streamable-HTTP MCP client at `http://<host>:8080/mcp`. For Claude
+Desktop, add an entry like:
+
+```json
+{
+  "mcpServers": {
+    "pii-filter": {
+      "url": "http://localhost:8080/mcp"
+    }
+  }
+}
+```
+
+(The exact schema for remote MCP servers varies by client version — consult
+your client's docs if the shape above is not accepted.)
+
+> **Rate limiting.** `/mcp` is **not** rate-limited in v1. Operators are
+> expected to front it with network-level controls (reverse proxy, VPN,
+> auth). Per-IP limits still apply to the public REST routes.
 
 ## Development
 
@@ -88,8 +119,7 @@ See [`mcp_server/README.md`](mcp_server/README.md).
 python3.11 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-pytest tests/        # backend tests
-pytest mcp_server/tests/  # MCP server tests
+pytest tests/
 ```
 
 ## License
