@@ -12,6 +12,8 @@ from app.schemas import (
     DetectRequest,
     DetectResponse,
     Entity,
+    MaskRequest,
+    MaskResponse,
 )
 
 
@@ -89,4 +91,21 @@ async def detect(req: DetectRequest) -> DetectResponse:
         entities=entities,
         masked_text=masked_text,
         meta=meta,
+    )
+
+
+@router.post("/mask", response_model=MaskResponse)
+async def mask(req: MaskRequest) -> MaskResponse:
+    detect_req = DetectRequest(
+        text=req.text,
+        mode=req.mode,
+        mask=True,
+        mask_char=req.mask_char,
+        labels=req.labels,
+    )
+    detect_resp = await detect(detect_req)
+    return MaskResponse(
+        masked_text=detect_resp.masked_text or req.text,
+        entity_count=detect_resp.meta.entity_count,
+        processing_ms=detect_resp.meta.processing_ms,
     )
