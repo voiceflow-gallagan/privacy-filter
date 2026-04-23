@@ -1,13 +1,12 @@
-from __future__ import annotations
-
 import asyncio
 import time
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
 from app import model as model_module
 from app.config import get_settings
 from app.labels import UnknownLabelError, validate_labels
 from app.model import ModelNotLoadedError, get_state
+from app.ratelimit import current_limit, limiter
 from app.schemas import (
     BatchItem,
     BatchItemError,
@@ -35,7 +34,8 @@ def _count_tokens(tokenizer, text: str) -> int:
 
 
 @router.post("/detect/batch", response_model=BatchResponse)
-async def detect_batch(req: BatchRequest) -> BatchResponse:
+@limiter.limit(current_limit)
+async def detect_batch(request: Request, req: BatchRequest) -> BatchResponse:
     settings = get_settings()
 
     if len(req.items) > settings.max_batch_size:

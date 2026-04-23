@@ -1,19 +1,15 @@
-from __future__ import annotations
-
+import asyncio
 import time
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
+from app import model as model_module
 from app.chunker import detect_with_chunking
 from app.config import get_settings
 from app.labels import UnknownLabelError, validate_labels
 from app.model import ModelNotLoadedError, get_state
+from app.ratelimit import current_limit, limiter
 from app.schemas import (
-    DetectMeta,
-    DetectRequest,
-    DetectResponse,
-    Entity,
-    MaskRequest,
-    MaskResponse,
+    DetectMeta, DetectRequest, DetectResponse, Entity, MaskRequest, MaskResponse,
 )
 
 
@@ -35,7 +31,8 @@ def _filter_by_labels(spans: list[dict], allowed: frozenset[str] | None) -> list
 
 
 @router.post("/detect", response_model=DetectResponse)
-async def detect(req: DetectRequest) -> DetectResponse:
+@limiter.limit(current_limit)
+async def detect(request: Request, req: DetectRequest) -> DetectResponse:
     settings = get_settings()
     if len(req.text) > settings.max_text_length:
         raise HTTPException(
@@ -54,8 +51,6 @@ async def detect(req: DetectRequest) -> DetectResponse:
 
     started = time.perf_counter()
 
-    import asyncio
-
     def _do():
         return detect_with_chunking(
             text=req.text,
@@ -67,7 +62,6 @@ async def detect(req: DetectRequest) -> DetectResponse:
             smart_split=settings.smart_split,
         )
 
-    from app import model as model_module
     async with model_module._semaphore:
         result = await asyncio.to_thread(_do)
 
@@ -83,27 +77,20 @@ async def detect(req: DetectRequest) -> DetectResponse:
         chunks_processed=result.chunks_processed if result.chunks_processed > 1 else None,
         input_tokens=result.input_tokens if result.chunks_processed > 1 else None,
     )
-
     masked_text = _apply_mask(req.text, entities, req.mask_char) if req.mask else None
 
-    return DetectResponse(
-        text=req.text,
-        entities=entities,
-        masked_text=masked_text,
-        meta=meta,
-    )
+    return DetectResponse(text=req.text, entities=entities,
+                          masked_text=masked_text, meta=meta)
 
 
 @router.post("/mask", response_model=MaskResponse)
-async def mask(req: MaskRequest) -> MaskResponse:
+@limiter.limit(current_limit)
+async def mask(request: Request, req: MaskRequest) -> MaskResponse:
     detect_req = DetectRequest(
-        text=req.text,
-        mode=req.mode,
-        mask=True,
-        mask_char=req.mask_char,
-        labels=req.labels,
+        text=req.text, mode=req.mode, mask=True,
+        mask_char=req.mask_char, labels=req.labels,
     )
-    detect_resp = await detect(detect_req)
+    detect_resp = await detect(request, detect_req)
     return MaskResponse(
         masked_text=detect_resp.masked_text or req.text,
         entity_count=detect_resp.meta.entity_count,
