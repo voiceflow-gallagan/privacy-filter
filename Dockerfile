@@ -13,7 +13,10 @@ RUN apt-get update \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-RUN useradd --system --create-home --uid 10001 piifilter
+RUN useradd --system --create-home --uid 10001 piifilter \
+ && mkdir -p /app/model_cache \
+ && chown -R piifilter:piifilter /app
+
 USER piifilter
 
 COPY --chown=piifilter:piifilter app/ ./app/
