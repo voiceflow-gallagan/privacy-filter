@@ -46,22 +46,45 @@ def postprocess_spans(text: str, spans: list[dict],
                       max_whitespace_gap: int = 4) -> list[dict]:
     """Clean up raw pipeline spans.
 
-    1. Trim leading/trailing whitespace from each span (prevents the mask from
+    1. Expand each span to the full word it sits in. The model sometimes tags
+       a sub-word ("ze" inside "douze"), which leaks letters through the mask
+       ("dou[REDACTED]"). Walking outward over alnum chars fixes that even if
+       the label itself is wrong.
+    2. Trim leading/trailing whitespace from each span (prevents the mask from
        eating adjacent spaces, so "Hi Alice" masks to "Hi [REDACTED]" not "Hi[REDACTED]").
-    2. Merge same-label spans that overlap, touch, or are separated only by
+    3. Merge same-label spans that overlap, touch, or are separated only by
        whitespace. The model's BIOES decoding often fragments a single entity
        into multiple adjacent sub-spans ("Marie Dubois" → [" Marie", "Dub", "ois"]);
        this stitches them back together.
 
-    Does NOT merge across punctuation or word characters — two emails separated
-    by ", " stay separate. `max_whitespace_gap` caps how much whitespace a merge
-    can bridge; 4 chars accommodates IBAN/phone/credit-card grouping spaces
-    while rejecting larger structural gaps.
+    Does NOT merge across punctuation or word characters, and does NOT merge
+    across labels — two emails separated by ", " stay separate, and a
+    misclassified sub-span (model error) remains its own entity.
+    `max_whitespace_gap` caps how much whitespace a merge can bridge; 4 chars
+    accommodates IBAN/phone/credit-card grouping spaces while rejecting larger
+    structural gaps.
     """
-    # 1. Trim whitespace
+    # 1. Expand to word boundaries (only if the span cuts mid-word),
+    # then 2. trim whitespace.
     trimmed: list[dict] = []
     for s in spans:
         start, end = int(s["start"]), int(s["end"])
+
+        # Left boundary cuts mid-word iff both text[start-1] and text[start]
+        # are alnum. Expand leftward to the word start.
+        if (start > 0 and start < len(text)
+                and text[start - 1].isalnum() and text[start].isalnum()):
+            while start > 0 and text[start - 1].isalnum():
+                start -= 1
+
+        # Right boundary cuts mid-word iff both text[end-1] and text[end]
+        # are alnum. Expand rightward to the word end.
+        if (end < len(text) and end > 0
+                and text[end - 1].isalnum() and text[end].isalnum()):
+            while end < len(text) and text[end].isalnum():
+                end += 1
+
+        # Trim whitespace from either side
         while start < end and text[start].isspace():
             start += 1
         while end > start and text[end - 1].isspace():

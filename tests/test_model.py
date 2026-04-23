@@ -140,3 +140,47 @@ def test_postprocess_drops_all_whitespace_spans():
     spans = [_span("private_person", 5, 8)]  # all spaces
     out = model_module.postprocess_spans(text, spans)
     assert out == []
+
+
+def test_postprocess_expands_subword_span_to_full_word():
+    """Fixes 'dou[REDACTED]' leakage when the model tags 'ze' inside 'douze'."""
+    text = "zéro six, douze, trente"
+    # 'ze' is the last 2 chars of 'douze' — indices [13, 15]
+    assert text[13:15] == "ze"
+    spans = [_span("private_phone", 13, 15)]
+    out = model_module.postprocess_spans(text, spans)
+    assert len(out) == 1
+    assert out[0]["text"] == "douze"
+
+
+def test_postprocess_expands_subword_from_interior():
+    """A span wholly inside a word should grow to cover the whole word."""
+    text = "welcome Alice Smith!"
+    # 'lic' is interior chars of 'Alice' — indices [9, 12]
+    assert text[9:12] == "lic"
+    spans = [_span("private_person", 9, 12)]
+    out = model_module.postprocess_spans(text, spans)
+    assert out[0]["text"] == "Alice"
+
+
+def test_postprocess_does_not_expand_if_boundary_is_clean():
+    """If the span is already aligned to word boundaries, don't touch it."""
+    text = "call +33 6 42 18 and done"
+    # span captures " +33 6 42 18 " with whitespace around — clean boundaries
+    # (text[4]=' ' and text[17]='a' with text[16]=' '), shouldn't grow left.
+    spans = [_span("private_phone", 5, 17)]
+    assert text[5:17] == "+33 6 42 18 "
+    out = model_module.postprocess_spans(text, spans)
+    # Trimming should give "+33 6 42 18" — NOT "call +33 6 42 18"
+    assert out[0]["text"] == "+33 6 42 18"
+
+
+def test_postprocess_expand_does_not_cross_hyphen():
+    """Hyphens are not alnum, so expansion stops at them (preserves segmentation)."""
+    text = "Welcome, Laurent-Mercier here"
+    # model tags just 'Laur' — indices [9, 13]
+    assert text[9:13] == "Laur"
+    spans = [_span("private_person", 9, 13)]
+    out = model_module.postprocess_spans(text, spans)
+    # Expands to 'Laurent' only; hyphen is a word boundary
+    assert out[0]["text"] == "Laurent"
