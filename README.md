@@ -7,6 +7,8 @@ Self-hosted PII detection and masking REST API powered by `openai/privacy-filter
 - Per-IP rate limiting (configurable)
 - Built-in MCP server at `/mcp` (streamable-HTTP) for Claude Desktop and other MCP clients
 
+> Deploying to a VPS with a public subdomain? See [`DEPLOYMENT.md`](DEPLOYMENT.md) for the Cloudflare-in-front recipe (Flexible SSL, Origin Rule, firewall lockdown).
+
 ## Quickstart
 
 ```bash
