@@ -255,6 +255,35 @@ def test_scan_spoken_ending_keyword_captures_spoken_last4():
     assert "four four five one" in run
 
 
+def test_ipv4_public_is_flagged():
+    text = "Source IP: 185.220.101.47 (Tor exit node, DE)"
+    assert _texts(regex_spans(text), "ip_address") == ["185.220.101.47"]
+
+
+def test_ipv4_private_ranges_skipped():
+    text = (
+        "internal 10.0.0.1 and 172.16.5.4 and 192.168.1.10 "
+        "and 127.0.0.1 and 169.254.169.254"
+    )
+    assert _texts(regex_spans(text), "ip_address") == []
+
+
+def test_ipv4_multicast_and_zero_skipped():
+    text = "multicast 224.0.0.1 or 0.0.0.0"
+    assert _texts(regex_spans(text), "ip_address") == []
+
+
+def test_ipv4_out_of_range_octets_skipped():
+    text = "not an IP: 999.1.2.3 or 1.2.3.999 or 300.300.300.300"
+    assert _texts(regex_spans(text), "ip_address") == []
+
+
+def test_ipv4_not_adjacent_to_version_strings():
+    # "v4.2.1.0" should NOT match (leading alphanum breaks the boundary).
+    text = "running on v4.2.1.0 build"
+    assert _texts(regex_spans(text), "ip_address") == []
+
+
 def test_spoken_digits_no_redos():
     """The tokenizer is O(N); this guards against future refactors that
     introduce backtracking. 500 KB of noise with sporadic digit-words must

@@ -50,6 +50,13 @@ _AT_SIGN = re.compile(r"@")
 _LOCAL_PART_SUFFIX = re.compile(r"[\w.+\-]+$")
 _DOMAIN_PREFIX = re.compile(r"^[\w\-]+(?:\.[\w\-]+)+")
 
+# Public IPv4: four dot-separated integers, each 0-255. Octet-range check
+# runs after the regex. Private / loopback / link-local ranges are skipped
+# so internal infrastructure identifiers don't clog results.
+_IPV4 = re.compile(
+    r"(?<![\w.])(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?![\w.])"
+)
+
 _LAST4_WINDOW = 64
 _LOCAL_PART_WINDOW = 64
 _DOMAIN_WINDOW = 255
@@ -67,6 +74,47 @@ def _luhn_valid(digits: str) -> bool:
                 n -= 9
         total += n
     return total % 10 == 0
+
+
+def _is_public_ipv4(octets: tuple[int, int, int, int]) -> bool:
+    """Return True for globally-routable IPv4 addresses.
+
+    Skips RFC 1918 private ranges, loopback, link-local, multicast, and
+    reserved blocks — the stuff that's never PII but shows up in internal
+    logs all the time.
+    """
+    a, b, c, d = octets
+    if not all(0 <= x <= 255 for x in octets):
+        return False
+    if a == 10:
+        return False
+    if a == 172 and 16 <= b <= 31:
+        return False
+    if a == 192 and b == 168:
+        return False
+    if a == 127:
+        return False
+    if a == 169 and b == 254:
+        return False
+    if a == 0:
+        return False
+    if a >= 224:  # multicast + reserved
+        return False
+    return True
+
+
+def _scan_ipv4(text: str) -> "Iterator[dict]":
+    for m in _IPV4.finditer(text):
+        octets = tuple(int(m.group(i)) for i in (1, 2, 3, 4))
+        if not _is_public_ipv4(octets):
+            continue
+        yield {
+            "label": "ip_address",
+            "start": m.start(),
+            "end": m.end(),
+            "text": m.group(0),
+            "score": 1.0,
+        }
 
 
 def _aba_checksum_ok(digits: str) -> bool:
@@ -213,6 +261,7 @@ def regex_spans(text: str) -> list[dict]:
                         "text": digits, "score": 1.0})
 
     out.extend(_scan_emails(text))
+    out.extend(_scan_ipv4(text))
     out.extend(_scan_spoken(text))
     return out
 
