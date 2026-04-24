@@ -162,15 +162,39 @@ def test_scan_spoken_luhn_card_emits_credit_card_number():
     assert cards[0]["score"] == 1.0
 
 
-def test_scan_spoken_rejects_luhn_invalid_long_run():
+def test_scan_spoken_luhn_invalid_16_run_still_emits_card():
     from app.postprocess import _scan_spoken
-    # 16 digits, Luhn-INvalid → must NOT be labeled credit_card_number.
+    # Regression: transcripts contain fixture / misspoken cards that fail
+    # Luhn. A 13-19 consecutive spoken digit-word run is overwhelmingly a
+    # card in any realistic context, so we still emit credit_card_number
+    # (Luhn is informational, not a gate).
     text = (
         "one one one one one one one one "
         "one one one one one one one one"
     )
     spans = list(_scan_spoken(text))
-    assert not any(s["label"] == "credit_card_number" for s in spans)
+    labels = [s["label"] for s in spans]
+    assert "credit_card_number" in labels
+    # And NOT a phone, to guard against the old 16 > 15 fall-through.
+    assert "private_phone" not in labels
+
+
+def test_scan_spoken_real_transcript_card_with_ellipsis_separators():
+    from app.postprocess import _scan_spoken
+    # The exact pattern from a real transcript that leaked before the
+    # Luhn-optional fix: 4716 3852 9401 2867 (not Luhn-valid), spoken with
+    # "..." group separators and newlines.
+    text = (
+        "The card number is four, seven, one, six... \n"
+        "three, eight, five, two... nine, four, oh, one... "
+        "two, eight, six, seven. Expiry is zero nine."
+    )
+    spans = list(_scan_spoken(text))
+    cards = [s for s in spans if s["label"] == "credit_card_number"]
+    assert len(cards) == 1
+    # Span covers the full 16-digit spoken run.
+    assert "four, seven, one, six" in text[cards[0]["start"]:cards[0]["end"]]
+    assert "two, eight, six, seven" in text[cards[0]["start"]:cards[0]["end"]]
 
 
 def test_scan_spoken_phone_double_oh_nine_hundred():

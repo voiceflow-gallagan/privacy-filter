@@ -120,8 +120,12 @@ def _scan_emails(text: str) -> Iterator[dict]:
 def _scan_spoken(text: str) -> Iterator[dict]:
     """Emit spans for PII expressed as spelled-out digits.
 
-    Rule 1: Luhn-validated credit card (13-19 digits).
-    Rule 2: phone / long numeric ID (10-15 digits), only if Rule 1 missed.
+    Rule 1: credit card (13-19 digits). Luhn validity is a nice-to-have,
+            not a gate — real call transcripts include misspoken digits and
+            fixture numbers that fail Luhn, but a 13-19 consecutive spoken
+            digit-word run is overwhelmingly a card in any realistic context.
+    Rule 2: phone / long numeric ID (10-12 digits), only if the group length
+            didn't land in the credit-card range.
     Rule 3: keyword-anchored spoken CVV / ending-last-4. The keyword runs
             in the original text, the digits in the spoken group; if the
             group starts within 20 chars after a keyword hit, emit the
@@ -131,7 +135,8 @@ def _scan_spoken(text: str) -> Iterator[dict]:
     ending_keyword_ends: list[int] = [m.end() for m in _SPOKEN_ENDING_KEYWORD.finditer(text)]
 
     for group in extract_groups(text):
-        if _luhn_valid(group.digits):
+        n = len(group.digits)
+        if 13 <= n <= 19:
             start = group.spans[0][0]
             end = group.spans[-1][1]
             yield {
@@ -143,7 +148,7 @@ def _scan_spoken(text: str) -> Iterator[dict]:
             }
             continue
 
-        if 10 <= len(group.digits) <= 15:
+        if 10 <= n <= 12:
             start = group.spans[0][0]
             end = group.spans[-1][1]
             yield {
