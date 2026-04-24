@@ -127,6 +127,9 @@ def _scan_spoken(text: str) -> Iterator[dict]:
             group starts within 20 chars after a keyword hit, emit the
             mapped label.
     """
+    cvv_keyword_ends: list[int] = [m.end() for m in _SPOKEN_CVV_KEYWORD.finditer(text)]
+    ending_keyword_ends: list[int] = [m.end() for m in _SPOKEN_ENDING_KEYWORD.finditer(text)]
+
     for group in extract_groups(text):
         if _luhn_valid(group.digits):
             start = group.spans[0][0]
@@ -157,8 +160,8 @@ def _scan_spoken(text: str) -> Iterator[dict]:
         span_end = group.spans[-1][1]
 
         if 3 <= len(group.digits) <= 4:
-            for km in _SPOKEN_CVV_KEYWORD.finditer(text):
-                if 0 <= group_start - km.end() <= _KEYWORD_BRIDGE_GAP:
+            for k_end in cvv_keyword_ends:
+                if 0 <= group_start - k_end <= _KEYWORD_BRIDGE_GAP:
                     yield {
                         "label": "secret",
                         "start": span_start,
@@ -169,8 +172,8 @@ def _scan_spoken(text: str) -> Iterator[dict]:
                     break
 
         if len(group.digits) == 4:
-            for km in _SPOKEN_ENDING_KEYWORD.finditer(text):
-                if 0 <= group_start - km.end() <= _KEYWORD_BRIDGE_GAP:
+            for k_end in ending_keyword_ends:
+                if 0 <= group_start - k_end <= _KEYWORD_BRIDGE_GAP:
                     yield {
                         "label": "credit_card_last4",
                         "start": span_start,

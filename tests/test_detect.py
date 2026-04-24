@@ -143,3 +143,19 @@ def test_detect_masks_spoken_card_number(client):
     assert "two, eight, eight, seven" not in body["masked_text"]
     labels = {e["label"] for e in body["entities"]}
     assert "credit_card_number" in labels
+
+
+def test_detect_preserves_legit_prose_with_small_digit_words(client):
+    # Guards against over-matching: "one" and "two" in prose should NOT
+    # be redacted, and "Type 1 diabetes" must survive unchanged.
+    text = (
+        "Medical condition: Type 1 diabetes. "
+        "The patient uses one insulin pump and two glucose monitors."
+    )
+    r = client.post("/detect", json={"text": text, "mask": True})
+    body = r.json()
+    assert "Type 1 diabetes" in body["masked_text"]
+    # No spoken-digit label should fire on this prose.
+    labels = {e["label"] for e in body["entities"]}
+    assert "credit_card_number" not in labels
+    assert "private_phone" not in labels

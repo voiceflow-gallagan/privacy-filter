@@ -246,3 +246,18 @@ def test_spoken_digits_no_redos():
     assert elapsed < 0.5, f"regex_spans took {elapsed:.2f}s (spoken ReDoS?)"
     # Sanity: regex_spans returned without raising and the result is a list.
     assert isinstance(spans, list)
+
+
+def test_scan_spoken_ending_keyword_after_group_does_not_trigger():
+    from app.postprocess import _scan_spoken
+    # Keyword appears AFTER the digit group — must NOT bind.
+    text = "four four five one is the ending number on file"
+    spans = list(_scan_spoken(text))
+    assert not any(s["label"] == "credit_card_last4" for s in spans)
+
+
+def test_scan_spoken_cvv_keyword_after_group_does_not_trigger():
+    from app.postprocess import _scan_spoken
+    text = "three nine two is the security code"
+    spans = list(_scan_spoken(text))
+    assert not any(s["label"] == "secret" for s in spans)
