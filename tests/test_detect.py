@@ -128,6 +128,32 @@ def test_explicit_mode_overrides_default_mode_env(client, patch_model, monkeypat
     assert body["meta"]["mode"] == "precise"
 
 
+def _priya_once_inference(text: str, mode: str) -> list[dict]:
+    """Simulate the model catching only the SECOND 'Priya' in a doc —
+    the exact leak reported in the call-transcript test."""
+    target = "Priya"
+    last = text.rfind(target)
+    if last < 0:
+        return []
+    return [{"label": "private_person", "start": last,
+             "end": last + len(target), "text": target, "score": 0.95}]
+
+
+def test_detect_augments_missed_name_occurrences(client, patch_model):
+    patch_model.run_inference.impl = _priya_once_inference
+    text = (
+        "Agent: Thank you for calling SkyJet, this is Priya speaking. "
+        "How can I help? Hi Priya, I lost my ticket."
+    )
+    r = client.post("/detect", json={"text": text, "mask": True})
+    body = r.json()
+    # Neither "Priya" should survive the mask.
+    assert "Priya" not in body["masked_text"]
+    person_spans = [e for e in body["entities"] if e["label"] == "private_person"]
+    # Model caught one, augmentation adds the other → 2 total.
+    assert len(person_spans) == 2
+
+
 def test_detect_masks_spoken_card_number(client):
     # Luhn-valid 16-digit spoken card. If this test fails with "spoken run
     # still visible", _scan_spoken is not wired into regex_spans yet.

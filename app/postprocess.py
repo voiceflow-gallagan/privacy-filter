@@ -430,6 +430,62 @@ def regex_spans(text: str) -> list[dict]:
     return out
 
 
+_NAME_WORD_MIN = 3
+# Letter runs — accented Latin included so FR/ES/DE names tokenize properly.
+_NAME_WORD_RE = re.compile(r"[A-Za-zÀ-ÿ]+")
+
+
+def _ranges_overlap(span: tuple[int, int], ranges: list[tuple[int, int]]) -> bool:
+    a, b = span
+    for s, e in ranges:
+        if s < b and e > a:
+            return True
+    return False
+
+
+def augment_person_coverage(text: str, entities: list[dict]) -> list[dict]:
+    """Find uncovered occurrences of names already identified by the model.
+
+    The model sometimes misses short isolated mentions of a name when a
+    longer multi-token span covered the same surface elsewhere ("David
+    Chen" caught early, bare "David" missed later). This scans the text
+    for word-boundary case-sensitive occurrences of every 3+ character
+    name word seen in existing private_person spans, and emits new
+    private_person spans for matches not already covered by any entity.
+
+    Case-sensitive matching prevents false positives on accidental
+    collisions like "mark" → "Mark", while still catching every casing
+    the model itself has validated.
+    """
+    words: set[str] = set()
+    for e in entities:
+        if e.get("label") != "private_person":
+            continue
+        for w in _NAME_WORD_RE.findall(e.get("text", "") or ""):
+            if len(w) >= _NAME_WORD_MIN:
+                words.add(w)
+
+    if not words:
+        return []
+
+    covered = [(int(e["start"]), int(e["end"])) for e in entities]
+    extra: list[dict] = []
+    for word in words:
+        pattern = re.compile(rf"\b{re.escape(word)}\b")
+        for m in pattern.finditer(text):
+            if _ranges_overlap((m.start(), m.end()), covered):
+                continue
+            extra.append({
+                "label": "private_person",
+                "start": m.start(),
+                "end": m.end(),
+                "text": m.group(0),
+                "score": 1.0,
+            })
+            covered.append((m.start(), m.end()))
+    return extra
+
+
 def merge_with_model_spans(model_spans: list[dict], extra: list[dict]) -> list[dict]:
     """Add regex spans to model spans, deduping exact (start, end, label) matches.
 

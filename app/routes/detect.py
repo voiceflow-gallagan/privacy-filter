@@ -8,7 +8,11 @@ from app.config import get_settings
 from app.labels import UnknownLabelError, validate_labels
 from app.model import ModelNotLoadedError, get_state
 from app.modes import apply_mode_threshold
-from app.postprocess import merge_with_model_spans, regex_spans
+from app.postprocess import (
+    augment_person_coverage,
+    merge_with_model_spans,
+    regex_spans,
+)
 from app.ratelimit import current_limit, limiter
 from app.schemas import (
     DetectMeta, DetectRequest, DetectResponse, Entity, MaskRequest, MaskResponse,
@@ -86,6 +90,9 @@ async def _do_detect(req: DetectRequest) -> DetectResponse:
         result = await asyncio.to_thread(_do)
 
     all_spans = merge_with_model_spans(result.entities, regex_spans(req.text))
+    all_spans = merge_with_model_spans(
+        all_spans, augment_person_coverage(req.text, all_spans)
+    )
     thresholded = apply_mode_threshold(all_spans, effective_mode)
     spans = _filter_by_labels(thresholded, allowed)
     entities = [Entity(**s) for s in spans]

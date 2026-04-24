@@ -7,7 +7,11 @@ from app.config import get_settings
 from app.labels import UnknownLabelError, validate_labels
 from app.model import ModelNotLoadedError, get_state
 from app.modes import apply_mode_threshold
-from app.postprocess import merge_with_model_spans, regex_spans
+from app.postprocess import (
+    augment_person_coverage,
+    merge_with_model_spans,
+    regex_spans,
+)
 from app.ratelimit import current_limit, limiter
 from app.schemas import (
     BatchItem,
@@ -120,6 +124,9 @@ async def _process_item(item: BatchItem, n_tok: int, mask_top: bool,
         )
 
     spans = merge_with_model_spans(spans, regex_spans(item.text))
+    spans = merge_with_model_spans(
+        spans, augment_person_coverage(item.text, spans)
+    )
     spans = apply_mode_threshold(spans, effective_mode)
     if allowed is not None:
         spans = [s for s in spans if s["label"] in allowed]

@@ -273,6 +273,77 @@ def test_scan_spoken_ending_keyword_captures_spoken_last4():
     assert "four four five one" in run
 
 
+def test_augment_finds_uncovered_name_occurrence():
+    from app.postprocess import augment_person_coverage
+    text = "Hi Priya, how can I help? This is Priya speaking today."
+    # Model only caught the first "Priya".
+    existing = [{"label": "private_person", "start": 3, "end": 8,
+                 "text": "Priya", "score": 0.9}]
+    extra = augment_person_coverage(text, existing)
+    starts = [s["start"] for s in extra]
+    # Second "Priya" must be covered by the augmentation.
+    assert text.rindex("Priya") in starts
+
+
+def test_augment_skips_already_covered_ranges():
+    from app.postprocess import augment_person_coverage
+    text = "Priya and Priya again"
+    existing = [
+        {"label": "private_person", "start": 0, "end": 5, "text": "Priya", "score": 0.9},
+        {"label": "private_person", "start": 10, "end": 15, "text": "Priya", "score": 0.9},
+    ]
+    assert augment_person_coverage(text, existing) == []
+
+
+def test_augment_word_boundary_not_substring():
+    from app.postprocess import augment_person_coverage
+    # "Davidson" contains "David" but is NOT a separate name.
+    text = "David met Davidson yesterday"
+    existing = [{"label": "private_person", "start": 0, "end": 5,
+                 "text": "David", "score": 0.9}]
+    extra = augment_person_coverage(text, existing)
+    # Only "David" elsewhere is legitimate — none here.
+    assert extra == []
+
+
+def test_augment_case_sensitive():
+    from app.postprocess import augment_person_coverage
+    # "PRIYA" in shouting is NOT matched by "Priya".
+    text = "Priya here. ALSO PRIYA IS SHOUTING"
+    existing = [{"label": "private_person", "start": 0, "end": 5,
+                 "text": "Priya", "score": 0.9}]
+    extra = augment_person_coverage(text, existing)
+    assert extra == []
+
+
+def test_augment_multi_token_span_yields_each_word():
+    from app.postprocess import augment_person_coverage
+    text = "David Chen attended. Later David signed and Chen left."
+    existing = [{"label": "private_person", "start": 0, "end": 10,
+                 "text": "David Chen", "score": 0.9}]
+    extra = augment_person_coverage(text, existing)
+    texts = sorted(s["text"] for s in extra)
+    assert texts == ["Chen", "David"]
+
+
+def test_augment_drops_short_words():
+    from app.postprocess import augment_person_coverage
+    # "Jo" is 2 chars — below _NAME_WORD_MIN and must be ignored.
+    text = "Jo went home. Later Jo returned."
+    existing = [{"label": "private_person", "start": 0, "end": 2,
+                 "text": "Jo", "score": 0.9}]
+    assert augment_person_coverage(text, existing) == []
+
+
+def test_augment_returns_empty_without_person_entities():
+    from app.postprocess import augment_person_coverage
+    assert augment_person_coverage("no persons here", []) == []
+    # Non-person entity alone produces no augmentation.
+    existing = [{"label": "private_email", "start": 0, "end": 5,
+                 "text": "a@b.c", "score": 0.9}]
+    assert augment_person_coverage("no persons here", existing) == []
+
+
 def test_full_ssn_with_hyphens():
     text = "full SSN please 412-88-7742 thanks"
     assert _texts(regex_spans(text), "ssn") == ["412-88-7742"]
