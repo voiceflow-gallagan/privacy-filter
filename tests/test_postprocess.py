@@ -255,6 +255,33 @@ def test_scan_spoken_ending_keyword_captures_spoken_last4():
     assert "four four five one" in run
 
 
+def test_iso8601_with_fractional_seconds():
+    text = "[2026-04-19T14:22:18.443Z] session_start user_id=ak_blackwell_882"
+    assert _texts(regex_spans(text), "private_date") == ["2026-04-19T14:22:18.443Z"]
+
+
+def test_iso8601_with_tz_offset():
+    text = "started at 2026-04-19T14:22:18+02:00 and finished"
+    assert _texts(regex_spans(text), "private_date") == ["2026-04-19T14:22:18+02:00"]
+
+
+def test_iso8601_with_space_separator():
+    text = "event at 2026-04-19 14:22:18Z logged"
+    assert _texts(regex_spans(text), "private_date") == ["2026-04-19 14:22:18Z"]
+
+
+def test_iso8601_without_fractional_or_tz():
+    text = "last ran 2026-04-19T14:22:18 and done"
+    assert _texts(regex_spans(text), "private_date") == ["2026-04-19T14:22:18"]
+
+
+def test_iso8601_plain_date_not_matched():
+    # Bare dates like "2026-04-19" should NOT match the timestamp rule —
+    # they're the model's territory, not the postprocess's.
+    text = "dispatched on 2026-04-19 arrived later"
+    assert _texts(regex_spans(text), "private_date") == []
+
+
 def test_kv_card_last4_patterns():
     text = (
         "card.cancel card_id=crd_6Hf92Lq9xTw reason=LOST_STOLEN "

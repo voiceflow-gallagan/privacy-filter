@@ -69,6 +69,18 @@ _IPV4 = re.compile(
     r"(?<![\w.])(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?![\w.])"
 )
 
+# ISO-8601 timestamps including optional fractional seconds and timezone.
+# The model often fragments these ("…18.", "443Z", "443Z] session_start…"),
+# each fragment picking up a different label. Emitting one deterministic
+# span over the whole timestamp lets the mask-time union subsume the
+# fragments so the final output is a single clean [REDACTED].
+_ISO8601 = re.compile(
+    r"\d{4}-\d{2}-\d{2}"
+    r"[T ]\d{2}:\d{2}:\d{2}"
+    r"(?:\.\d+)?"
+    r"(?:Z|[+-]\d{2}:?\d{2})?"
+)
+
 _LAST4_WINDOW = 64
 _LOCAL_PART_WINDOW = 64
 _DOMAIN_WINDOW = 255
@@ -113,6 +125,17 @@ def _is_public_ipv4(octets: tuple[int, int, int, int]) -> bool:
     if a >= 224:  # multicast + reserved
         return False
     return True
+
+
+def _scan_iso8601(text: str) -> "Iterator[dict]":
+    for m in _ISO8601.finditer(text):
+        yield {
+            "label": "private_date",
+            "start": m.start(),
+            "end": m.end(),
+            "text": m.group(0),
+            "score": 1.0,
+        }
 
 
 def _scan_ipv4(text: str) -> "Iterator[dict]":
@@ -284,6 +307,7 @@ def regex_spans(text: str) -> list[dict]:
 
     out.extend(_scan_emails(text))
     out.extend(_scan_ipv4(text))
+    out.extend(_scan_iso8601(text))
     out.extend(_scan_spoken(text))
     return out
 
