@@ -7,6 +7,7 @@ from app.chunker import detect_with_chunking
 from app.config import get_settings
 from app.labels import UnknownLabelError, validate_labels
 from app.model import ModelNotLoadedError, get_state
+from app.modes import apply_mode_threshold
 from app.postprocess import merge_with_model_spans, regex_spans
 from app.ratelimit import current_limit, limiter
 from app.schemas import (
@@ -66,6 +67,8 @@ async def _do_detect(req: DetectRequest) -> DetectResponse:
     except ModelNotLoadedError:
         raise HTTPException(status_code=503, detail="model not loaded")
 
+    effective_mode = req.mode or settings.default_mode or "balanced"
+
     started = time.perf_counter()
 
     def _do():
@@ -73,7 +76,7 @@ async def _do_detect(req: DetectRequest) -> DetectResponse:
             text=req.text,
             tokenizer=state.tokenizer,
             run_inference=lambda t, m: state.run_inference(t, m),
-            mode=req.mode,
+            mode=effective_mode,
             chunk_size_tokens=settings.chunk_size_tokens,
             overlap_tokens=settings.chunk_overlap_tokens,
             smart_split=settings.smart_split,
@@ -83,13 +86,14 @@ async def _do_detect(req: DetectRequest) -> DetectResponse:
         result = await asyncio.to_thread(_do)
 
     all_spans = merge_with_model_spans(result.entities, regex_spans(req.text))
-    spans = _filter_by_labels(all_spans, allowed)
+    thresholded = apply_mode_threshold(all_spans, effective_mode)
+    spans = _filter_by_labels(thresholded, allowed)
     entities = [Entity(**s) for s in spans]
     elapsed_ms = int((time.perf_counter() - started) * 1000)
 
     meta = DetectMeta(
         model=state.model_name,
-        mode=req.mode,
+        mode=effective_mode,
         entity_count=len(entities),
         processing_ms=elapsed_ms,
         chunks_processed=result.chunks_processed if result.chunks_processed > 1 else None,

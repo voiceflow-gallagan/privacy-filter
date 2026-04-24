@@ -17,7 +17,7 @@ class DetectRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     text: str = Field(..., min_length=1)
-    mode: Mode = "balanced"
+    mode: Optional[Mode] = None
     mask: bool = False
     mask_char: str = "[REDACTED]"
     labels: Optional[list[str]] = None
@@ -43,7 +43,7 @@ class MaskRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     text: str = Field(..., min_length=1)
-    mode: Mode = "balanced"
+    mode: Optional[Mode] = None
     mask_char: str = "[REDACTED]"
     labels: Optional[list[str]] = None
 
@@ -58,7 +58,7 @@ class BatchItem(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     text: str = Field(..., min_length=1)
-    mode: Mode = "balanced"
+    mode: Optional[Mode] = None
     mask_char: str = "[REDACTED]"
     labels: Optional[list[str]] = None
 

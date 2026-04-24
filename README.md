@@ -42,7 +42,7 @@ All knobs are env vars (with defaults shown):
 | Var | Default | Notes |
 |-----|---------|-------|
 | `DEVICE` | `cpu` | Set to `cuda` to use GPU |
-| `DEFAULT_MODE` | `balanced` | `precise` / `balanced` / `recall` |
+| `DEFAULT_MODE` | `balanced` | Score threshold applied to model spans: `precise` ≥ 0.85, `balanced` ≥ 0.55, `recall` keeps all. Request-level `mode` overrides this. |
 | `MAX_TEXT_LENGTH` | `524288` | Hard char cap on `/detect` |
 | `CHUNK_SIZE_TOKENS` | `120000` | Max tokens per chunk |
 | `CHUNK_OVERLAP_TOKENS` | `512` | Overlap between consecutive chunks |

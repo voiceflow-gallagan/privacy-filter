@@ -9,7 +9,9 @@ from app.schemas import (
 def test_detect_request_minimal():
     r = DetectRequest(text="hello")
     assert r.text == "hello"
-    assert r.mode == "balanced"
+    # Unset by design — the route resolves it from settings.default_mode
+    # (see app/modes.py). The schema default is None.
+    assert r.mode is None
     assert r.mask is False
     assert r.mask_char == "[REDACTED]"
     assert r.labels is None
@@ -34,4 +36,4 @@ def test_batch_request_requires_items():
 def test_batch_item_inherits_detect_fields():
     item = BatchItem(text="hi", labels=["private_email"])
     assert item.labels == ["private_email"]
-    assert item.mode == "balanced"
+    assert item.mode is None

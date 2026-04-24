@@ -70,3 +70,59 @@ def test_detect_text_too_long_is_422(client, monkeypatch):
                         lambda: Settings(max_text_length=10))
     r = client.post("/detect", json={"text": "x" * 50})
     assert r.status_code == 422
+
+
+def _low_conf_inference(text: str, mode: str) -> list[dict]:
+    """Single low-confidence (0.50) span covering the whole text."""
+    return [{"label": "private_person", "start": 0, "end": len(text),
+             "text": text, "score": 0.50}]
+
+
+def test_mode_precise_drops_low_confidence(client, patch_model):
+    patch_model.run_inference.impl = _low_conf_inference
+    r = client.post("/detect", json={"text": "Bob", "mode": "precise"})
+    body = r.json()
+    # 0.50 < precise threshold (0.85) → no entities
+    assert body["entities"] == []
+    assert body["meta"]["mode"] == "precise"
+
+
+def test_mode_balanced_also_drops_sub_fifty_five(client, patch_model):
+    patch_model.run_inference.impl = _low_conf_inference
+    r = client.post("/detect", json={"text": "Bob", "mode": "balanced"})
+    body = r.json()
+    # 0.50 < balanced threshold (0.55) → no entities
+    assert body["entities"] == []
+    assert body["meta"]["mode"] == "balanced"
+
+
+def test_mode_recall_keeps_low_confidence(client, patch_model):
+    patch_model.run_inference.impl = _low_conf_inference
+    r = client.post("/detect", json={"text": "Bob", "mode": "recall"})
+    body = r.json()
+    assert len(body["entities"]) == 1
+    assert body["entities"][0]["score"] == 0.50
+    assert body["meta"]["mode"] == "recall"
+
+
+def test_default_mode_env_applies_when_request_omits_mode(client, patch_model, monkeypatch):
+    from app.config import Settings
+    monkeypatch.setattr("app.routes.detect.get_settings",
+                        lambda: Settings(default_mode="recall"))
+    patch_model.run_inference.impl = _low_conf_inference
+    r = client.post("/detect", json={"text": "Bob"})
+    body = r.json()
+    # DEFAULT_MODE=recall → low-confidence span survives
+    assert len(body["entities"]) == 1
+    assert body["meta"]["mode"] == "recall"
+
+
+def test_explicit_mode_overrides_default_mode_env(client, patch_model, monkeypatch):
+    from app.config import Settings
+    monkeypatch.setattr("app.routes.detect.get_settings",
+                        lambda: Settings(default_mode="recall"))
+    patch_model.run_inference.impl = _low_conf_inference
+    r = client.post("/detect", json={"text": "Bob", "mode": "precise"})
+    body = r.json()
+    assert body["entities"] == []
+    assert body["meta"]["mode"] == "precise"

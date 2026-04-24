@@ -6,6 +6,8 @@ from app import model as model_module
 from app.config import get_settings
 from app.labels import UnknownLabelError, validate_labels
 from app.model import ModelNotLoadedError, get_state
+from app.modes import apply_mode_threshold
+from app.postprocess import merge_with_model_spans, regex_spans
 from app.ratelimit import current_limit, limiter
 from app.schemas import (
     BatchItem,
@@ -106,15 +108,19 @@ async def _process_item(item: BatchItem, n_tok: int, mask_top: bool,
             error=BatchItemError(code="unknown_label", message=str(e)),
         )
 
+    effective_mode = item.mode or settings.default_mode or "balanced"
+
     try:
         async with model_module._semaphore:
-            spans = await asyncio.to_thread(state.run_inference, item.text, item.mode)
+            spans = await asyncio.to_thread(state.run_inference, item.text, effective_mode)
     except Exception as exc:  # noqa: BLE001 - surface inference failure per item
         return BatchItemResult(
             status="error",
             error=BatchItemError(code="inference_failed", message=str(exc)),
         )
 
+    spans = merge_with_model_spans(spans, regex_spans(item.text))
+    spans = apply_mode_threshold(spans, effective_mode)
     if allowed is not None:
         spans = [s for s in spans if s["label"] in allowed]
     entities = [Entity(**s) for s in spans]
