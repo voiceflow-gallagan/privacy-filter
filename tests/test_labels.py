@@ -2,11 +2,14 @@ import pytest
 from app.labels import KNOWN_LABELS, validate_labels, UnknownLabelError
 
 
-def test_known_labels_are_the_eight_from_spec():
+def test_known_labels():
+    # Eight model-native labels plus credit_card_last4 from the regex
+    # postprocessor (see app/postprocess.py).
     assert KNOWN_LABELS == frozenset({
         "private_person", "private_email", "private_phone",
         "private_address", "account_number", "private_url",
         "private_date", "secret",
+        "credit_card_last4",
     })
 
 

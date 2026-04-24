@@ -7,6 +7,7 @@ from app.chunker import detect_with_chunking
 from app.config import get_settings
 from app.labels import UnknownLabelError, validate_labels
 from app.model import ModelNotLoadedError, get_state
+from app.postprocess import merge_with_model_spans, regex_spans
 from app.ratelimit import current_limit, limiter
 from app.schemas import (
     DetectMeta, DetectRequest, DetectResponse, Entity, MaskRequest, MaskResponse,
@@ -81,7 +82,8 @@ async def _do_detect(req: DetectRequest) -> DetectResponse:
     async with model_module._semaphore:
         result = await asyncio.to_thread(_do)
 
-    spans = _filter_by_labels(result.entities, allowed)
+    all_spans = merge_with_model_spans(result.entities, regex_spans(req.text))
+    spans = _filter_by_labels(all_spans, allowed)
     entities = [Entity(**s) for s in spans]
     elapsed_ms = int((time.perf_counter() - started) * 1000)
 

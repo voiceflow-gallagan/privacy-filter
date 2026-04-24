@@ -10,6 +10,7 @@ KNOWN_LABELS: frozenset[str] = frozenset({
     "private_url",
     "private_date",
     "secret",
+    "credit_card_last4",
 })
 
 
