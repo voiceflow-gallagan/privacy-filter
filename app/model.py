@@ -89,6 +89,13 @@ def postprocess_spans(text: str, spans: list[dict],
             start += 1
         while end > start and text[end - 1].isspace():
             end -= 1
+        # Trim trailing sentence-terminal punctuation. The model sometimes
+        # swallows the final "." / "," / ";" into a person or address span
+        # ("David Chen.") which leaves the redacted output without a sentence
+        # terminator. Leading punctuation is left alone — an opening "(" is
+        # sometimes part of a phone span.
+        while end > start and text[end - 1] in ".,;:!?":
+            end -= 1
         if start < end:
             trimmed.append({**s,
                             "start": start, "end": end,

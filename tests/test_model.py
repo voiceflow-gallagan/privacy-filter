@@ -82,6 +82,24 @@ def test_postprocess_trims_trailing_whitespace():
     assert text[out[0]["start"]:out[0]["end"]] == "+33 6 42 18"
 
 
+def test_postprocess_trims_trailing_sentence_terminal_punctuation():
+    # The model often swallows trailing "." / "," / ";" into a person span
+    # ("David Chen.") which leaves the redacted sentence without a period.
+    text = "Yes, it's David Chen. D-A-V-I-D."
+    spans = [_span("private_person", 10, 32)]  # "David Chen. D-A-V-I-D."
+    out = model_module.postprocess_spans(text, spans)
+    assert out[0]["end"] == 31  # drops the final "."
+    assert text[out[0]["start"]:out[0]["end"]] == "David Chen. D-A-V-I-D"
+
+
+def test_postprocess_does_not_trim_leading_punctuation():
+    # "(" on a phone number should survive — leading punctuation stays.
+    text = "It's (347) 555-4421 please"
+    spans = [_span("private_phone", 5, 19)]  # "(347) 555-4421"
+    out = model_module.postprocess_spans(text, spans)
+    assert text[out[0]["start"]:out[0]["end"]] == "(347) 555-4421"
+
+
 def test_postprocess_merges_overlapping_fragments():
     """Classic BIOES fragmentation: three overlapping spans for 'Marie Dubois'."""
     text = "Welcome, Marie Dubois!"
