@@ -141,3 +141,33 @@ def test_adversarial_inputs_no_redos():
         assert elapsed < 0.5, f"{name} took {elapsed:.2f}s (ReDoS regression?)"
         assert not any(s["label"] == "credit_card_last4" for s in spans)
         assert not any(s["label"] == "private_email" for s in spans)
+
+
+def test_scan_spoken_luhn_card_emits_credit_card_number():
+    from app.postprocess import _scan_spoken
+    text = (
+        "The card number is four, seven, one, six, "
+        "three, eight, five, two, "
+        "nine, four, oh, one, "
+        "two, eight, eight, seven."
+    )
+    spans = list(_scan_spoken(text))
+    cards = [s for s in spans if s["label"] == "credit_card_number"]
+    assert len(cards) == 1
+    # The span covers the full spoken run — from "four" to "seven".
+    first_four = text.index("four")
+    last_seven_end = text.rindex("seven") + len("seven")
+    assert cards[0]["start"] == first_four
+    assert cards[0]["end"] == last_seven_end
+    assert cards[0]["score"] == 1.0
+
+
+def test_scan_spoken_rejects_luhn_invalid_long_run():
+    from app.postprocess import _scan_spoken
+    # 16 digits, Luhn-INvalid → must NOT be labeled credit_card_number.
+    text = (
+        "one one one one one one one one "
+        "one one one one one one one one"
+    )
+    spans = list(_scan_spoken(text))
+    assert not any(s["label"] == "credit_card_number" for s in spans)

@@ -3,6 +3,8 @@ from __future__ import annotations
 import re
 from typing import Iterator
 
+from app.spoken_digits import extract_groups
+
 
 # The naive patterns (e.g. `[mask]{2,}(?:...)*[\s\-]*\d{4}`) blow up to O(N²)
 # on adversarial mask-char-only input (`xXxX…` * 250k) because `finditer`
@@ -42,6 +44,20 @@ _DOMAIN_PREFIX = re.compile(r"^[\w\-]+(?:\.[\w\-]+)+")
 _LAST4_WINDOW = 64
 _LOCAL_PART_WINDOW = 64
 _DOMAIN_WINDOW = 255
+
+
+def _luhn_valid(digits: str) -> bool:
+    if not digits.isdigit() or not (13 <= len(digits) <= 19):
+        return False
+    total = 0
+    for i, ch in enumerate(reversed(digits)):
+        n = int(ch)
+        if i % 2 == 1:
+            n *= 2
+            if n > 9:
+                n -= 9
+        total += n
+    return total % 10 == 0
 
 
 def _aba_checksum_ok(digits: str) -> bool:
@@ -90,6 +106,25 @@ def _scan_emails(text: str) -> Iterator[dict]:
                 "text": text[start:end],
                 "score": 1.0,
             }
+
+
+def _scan_spoken(text: str) -> Iterator[dict]:
+    """Emit spans for PII expressed as spelled-out digits.
+
+    v1: Rule 1 (Luhn-validated credit card). Rules 2-3 land in later tasks.
+    """
+    for group in extract_groups(text):
+        if _luhn_valid(group.digits):
+            start = group.spans[0][0]
+            end = group.spans[-1][1]
+            yield {
+                "label": "credit_card_number",
+                "start": start,
+                "end": end,
+                "text": text[start:end],
+                "score": 1.0,
+            }
+            continue
 
 
 def regex_spans(text: str) -> list[dict]:
