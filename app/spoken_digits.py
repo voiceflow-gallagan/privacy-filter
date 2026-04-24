@@ -129,8 +129,28 @@ def extract_groups(text: str) -> list[DigitGroup]:
             if len(tok.text) > _MAX_SEP_CHARS:
                 flush()
             i += 1
+        elif tok.kind == TokenKind.MULT:
+            # MULT must be followed (optionally via one short SEP) by a DIGIT.
+            nxt_idx = i + 1
+            if (nxt_idx < len(tokens)
+                    and tokens[nxt_idx].kind == TokenKind.SEP
+                    and len(tokens[nxt_idx].text) <= _MAX_SEP_CHARS):
+                nxt_idx += 1
+            if nxt_idx < len(tokens) and tokens[nxt_idx].kind == TokenKind.DIGIT:
+                digit = tokens[nxt_idx]
+                # Compound span covers MULT start through DIGIT end.
+                compound_span = (tok.start, digit.end)
+                for _ in range(tok.value or 1):
+                    current_digits.append(str(digit.value))
+                    current_spans.append(compound_span)
+                i = nxt_idx + 1
+                continue
+            # Lone MULT → close group.
+            flush()
+            i += 1
         else:
-            # OTHER / MULT / HUNDRED - close the group in v1.
+            # OTHER / HUNDRED — still close the group in this task.
+            # Task 6 will replace the HUNDRED handling.
             flush()
             i += 1
 

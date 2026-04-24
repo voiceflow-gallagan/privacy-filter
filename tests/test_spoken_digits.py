@@ -107,3 +107,21 @@ def test_extract_groups_keeps_short_separator():
     groups = extract_groups(text)
     assert len(groups) == 1
     assert groups[0].digits == "123456"
+
+
+def test_extract_groups_double_oh_emits_two_zeros():
+    # "zero seven seven double-oh eight nine" → "0770089" (7 digits)
+    groups = extract_groups("zero seven seven double-oh eight nine")
+    assert len(groups) == 1
+    assert groups[0].digits == "0770089"
+    # The two emitted zeros from "double-oh" share the same compound span
+    # (covering just the literal "double-oh" word-pair).
+    zero_spans = [groups[0].spans[3], groups[0].spans[4]]
+    assert zero_spans[0] == zero_spans[1]
+
+
+def test_extract_groups_triple_four():
+    # "one two triple-four five six" → "1244456"
+    groups = extract_groups("one two triple-four five six")
+    assert len(groups) == 1
+    assert groups[0].digits == "1244456"
