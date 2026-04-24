@@ -33,3 +33,58 @@ MULT_WORDS: dict[str, int] = {
 HUNDRED_WORDS: frozenset[str] = frozenset({
     "hundred",
 })
+
+
+import re
+from enum import Enum
+from typing import Iterator, Optional
+
+
+class TokenKind(str, Enum):
+    DIGIT = "DIGIT"
+    MULT = "MULT"
+    HUNDRED = "HUNDRED"
+    SEP = "SEP"
+    OTHER = "OTHER"
+
+
+@dataclass(frozen=True)
+class Token:
+    start: int
+    end: int
+    kind: TokenKind
+    value: Optional[int] = None
+    text: str = ""
+
+
+_TOKEN_RE = re.compile(
+    r"[A-Za-zÀ-ÿ]+"
+    r"|[^\w\s]+"
+    r"|\s+"
+)
+
+
+def _classify_word(word: str) -> tuple[TokenKind, Optional[int]]:
+    lw = word.lower()
+    if lw in DIGIT_WORDS:
+        return TokenKind.DIGIT, DIGIT_WORDS[lw]
+    if lw in MULT_WORDS:
+        return TokenKind.MULT, MULT_WORDS[lw]
+    if lw in HUNDRED_WORDS:
+        return TokenKind.HUNDRED, None
+    return TokenKind.OTHER, None
+
+
+def tokenize(text: str) -> Iterator[Token]:
+    """Yield Tokens covering every character of `text`. Non-alphabetic runs
+    (whitespace + punctuation) are emitted as SEP; alphabetic runs are
+    classified via the digit / multiplier / hundred dictionaries."""
+    for m in _TOKEN_RE.finditer(text):
+        chunk = m.group(0)
+        start, end = m.start(), m.end()
+        if chunk[0].isalpha():
+            kind, value = _classify_word(chunk)
+            yield Token(start=start, end=end, kind=kind,
+                        value=value, text=chunk)
+        else:
+            yield Token(start=start, end=end, kind=TokenKind.SEP, text=chunk)
