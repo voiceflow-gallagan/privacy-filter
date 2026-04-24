@@ -126,3 +126,20 @@ def test_explicit_mode_overrides_default_mode_env(client, patch_model, monkeypat
     body = r.json()
     assert body["entities"] == []
     assert body["meta"]["mode"] == "precise"
+
+
+def test_detect_masks_spoken_card_number(client):
+    # Luhn-valid 16-digit spoken card. If this test fails with "spoken run
+    # still visible", _scan_spoken is not wired into regex_spans yet.
+    text = (
+        "Caller: The card number is four, seven, one, six, "
+        "three, eight, five, two, nine, four, oh, one, "
+        "two, eight, eight, seven. Expiry is zero nine."
+    )
+    r = client.post("/detect", json={"text": text, "mask": True})
+    body = r.json()
+    # The spoken digits must not survive redaction.
+    assert "four, seven, one, six" not in body["masked_text"]
+    assert "two, eight, eight, seven" not in body["masked_text"]
+    labels = {e["label"] for e in body["entities"]}
+    assert "credit_card_number" in labels

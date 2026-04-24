@@ -186,8 +186,9 @@ def regex_spans(text: str) -> list[dict]:
 
     Emits score-1.0 spans for: partial credit-card shorthands
     (credit_card_last4), CVV/CVC/CID/security codes (secret), ABA routing
-    numbers (account_number, checksum-validated), and every email
-    (private_email).
+    numbers (account_number, checksum-validated), every email
+    (private_email), and spoken-digit runs (credit_card_number,
+    private_phone, credit_card_last4, secret).
     """
     out: list[dict] = list(_scan_last4(text))
 
@@ -204,6 +205,7 @@ def regex_spans(text: str) -> list[dict]:
                         "text": digits, "score": 1.0})
 
     out.extend(_scan_emails(text))
+    out.extend(_scan_spoken(text))
     return out
 
 
