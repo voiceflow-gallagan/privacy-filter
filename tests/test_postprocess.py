@@ -255,6 +255,24 @@ def test_scan_spoken_ending_keyword_captures_spoken_last4():
     assert "four four five one" in run
 
 
+def test_kv_card_last4_patterns():
+    text = (
+        "card.cancel card_id=crd_6Hf92Lq9xTw reason=LOST_STOLEN "
+        "last4=2867 cardholder=OKONKWO-BLACKWELL/A"
+    )
+    assert _texts(regex_spans(text), "credit_card_last4") == ["2867"]
+
+
+def test_kv_card_last4_colon_and_case_variants():
+    text = "card_last4: 1234, CARD_LAST_4=5678, LAST4=9012"
+    assert _texts(regex_spans(text), "credit_card_last4") == ["1234", "5678", "9012"]
+
+
+def test_kv_phone_last4_pattern():
+    text = "auth.mfa.success method=sms phone_last4=0783"
+    assert _texts(regex_spans(text), "private_phone") == ["0783"]
+
+
 def test_ipv4_public_is_flagged():
     text = "Source IP: 185.220.101.47 (Tor exit node, DE)"
     assert _texts(regex_spans(text), "ip_address") == ["185.220.101.47"]

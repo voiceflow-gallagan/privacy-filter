@@ -50,6 +50,18 @@ _AT_SIGN = re.compile(r"@")
 _LOCAL_PART_SUFFIX = re.compile(r"[\w.+\-]+$")
 _DOMAIN_PREFIX = re.compile(r"^[\w\-]+(?:\.[\w\-]+)+")
 
+# key=value partial-card / partial-phone shorthands in structured log lines:
+# `last4=2867`, `card_last4: 1234`, `phone_last4=0783`. Anchored on the
+# keyword so it can't ReDoS on adversarial input.
+_KV_CARD_LAST4 = re.compile(
+    r"\b(?:card_last4|card_last_4|last4|last_4)\s*[:=]\s*(\d{4})\b",
+    re.IGNORECASE,
+)
+_KV_PHONE_LAST4 = re.compile(
+    r"\b(?:phone_last4|phone_last_4|mobile_last4)\s*[:=]\s*(\d{4})\b",
+    re.IGNORECASE,
+)
+
 # Public IPv4: four dot-separated integers, each 0-255. Octet-range check
 # runs after the regex. Private / loopback / link-local ranges are skipped
 # so internal infrastructure identifiers don't clog results.
@@ -259,6 +271,16 @@ def regex_spans(text: str) -> list[dict]:
         if _aba_checksum_ok(digits):
             out.append({"label": "account_number", "start": start, "end": end,
                         "text": digits, "score": 1.0})
+
+    for m in _KV_CARD_LAST4.finditer(text):
+        start, end = m.span(1)
+        out.append({"label": "credit_card_last4", "start": start, "end": end,
+                    "text": text[start:end], "score": 1.0})
+
+    for m in _KV_PHONE_LAST4.finditer(text):
+        start, end = m.span(1)
+        out.append({"label": "private_phone", "start": start, "end": end,
+                    "text": text[start:end], "score": 1.0})
 
     out.extend(_scan_emails(text))
     out.extend(_scan_ipv4(text))
