@@ -229,3 +229,20 @@ def test_scan_spoken_ending_keyword_captures_spoken_last4():
     assert len(last4) == 1
     run = text[last4[0]["start"]:last4[0]["end"]]
     assert "four four five one" in run
+
+
+def test_spoken_digits_no_redos():
+    """The tokenizer is O(N); this guards against future refactors that
+    introduce backtracking. 500 KB of noise with sporadic digit-words must
+    process in well under half a second, regardless of whether any labels
+    are emitted (one huge 50k-digit group lands outside every rule's length
+    bounds and produces no spans — that's fine, the point is the tokenizer
+    didn't stall)."""
+    import time
+    payload = ("zero " * 50_000) + ("noise " * 50_000)  # ~500 KB
+    t0 = time.perf_counter()
+    spans = regex_spans(payload)
+    elapsed = time.perf_counter() - t0
+    assert elapsed < 0.5, f"regex_spans took {elapsed:.2f}s (spoken ReDoS?)"
+    # Sanity: regex_spans returned without raising and the result is a list.
+    assert isinstance(spans, list)
