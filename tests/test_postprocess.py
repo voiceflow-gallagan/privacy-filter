@@ -116,3 +116,28 @@ def test_confidence_is_one():
     text = "Visa •••• 1234"
     spans = regex_spans(text)
     assert all(s["score"] == 1.0 for s in spans)
+
+
+def test_adversarial_inputs_no_redos():
+    """Quadratic-backtracking regression guard.
+
+    The naive greedy patterns that preceded the anchor-on-needle rewrite
+    were O(N²) on these inputs and would hang the event loop near the
+    524288-char MAX_TEXT_LENGTH. 500k × 0.5s is a generous ceiling —
+    measured real cost on the current implementation is ~15ms.
+    """
+    import time
+
+    payloads = {
+        "mask_chars": ("xX" * 250_000) + " no digits here",
+        "hash_dots": "#" + ("." * 100_000) + " nope",
+        "dots_only": "." * 500_000,
+        "word_chars_no_at": "a" * 500_000,
+    }
+    for name, payload in payloads.items():
+        t0 = time.perf_counter()
+        spans = regex_spans(payload)
+        elapsed = time.perf_counter() - t0
+        assert elapsed < 0.5, f"{name} took {elapsed:.2f}s (ReDoS regression?)"
+        assert not any(s["label"] == "credit_card_last4" for s in spans)
+        assert not any(s["label"] == "private_email" for s in spans)

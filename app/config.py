@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     max_batch_total_tokens: int = 200_000
 
     rate_limit_enabled: bool = True
-    rate_limit_per_ip: str = "60/10minutes"
+    rate_limit_per_ip: str = "30/10minutes"
 
     log_level: str = "info"
 

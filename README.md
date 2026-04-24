@@ -51,7 +51,7 @@ All knobs are env vars (with defaults shown):
 | `MAX_BATCH_SIZE` | `32` | Items per `/detect/batch` call |
 | `MAX_BATCH_TOTAL_TOKENS` | `200000` | Token budget per batch |
 | `RATE_LIMIT_ENABLED` | `true` | Master switch |
-| `RATE_LIMIT_PER_IP` | `60/10minutes` | slowapi format |
+| `RATE_LIMIT_PER_IP` | `30/10minutes` | slowapi format |
 
 ## Throughput tuning
 

@@ -1,28 +1,32 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
-from typing import Callable, Optional
+from typing import Iterator
 
 
-@dataclass(frozen=True)
-class RegexRule:
-    name: str
-    pattern: re.Pattern[str]
-    label: str
-    group: int = 1
-    validator: Optional[Callable[[str], bool]] = None
+# The naive patterns (e.g. `[mask]{2,}(?:...)*[\s\-]*\d{4}`) blow up to O(N²)
+# on adversarial mask-char-only input (`xXxX…` * 250k) because `finditer`
+# tries every starting position and at each one the engine walks forward to
+# discover no trailing digits exist. Possessive quantifiers *at a single
+# position* don't help — the cost is per-position-scan, not per-backtrack.
+#
+# Fix: anchor on the rarest token. For partial cards that's `\d{4}\b`; for
+# emails it's `@`. We locate those cheaply in one pass, then validate a
+# bounded preceding/following context. Worst-case work is O(N + k·window)
+# where k is the hit count.
+_MASK_CHARS_CLASS = r"[•·●*xX✕×]"
 
+_FOUR_DIGITS_WORD = re.compile(r"(?<!\d)\d{4}\b")
 
-_MASK_CHARS = r"[•·●*xX✕×]"
-
-_LAST4_MASKED = re.compile(
-    rf"{_MASK_CHARS}{{2,}}(?:[\s\-]*{_MASK_CHARS}+)*[\s\-]*(\d{{4}})\b"
+# All prefix patterns end with `$` so they must land immediately before the
+# 4-digit group when applied to a bounded text[pos-WINDOW:pos] slice.
+_MASK_PREFIX = re.compile(
+    rf"{_MASK_CHARS_CLASS}{{2,}}(?:[\s\-]{{0,3}}{_MASK_CHARS_CLASS}+){{0,8}}"
+    rf"[\s\-]{{0,3}}$"
 )
-_LAST4_HASH_DOTS = re.compile(r"#\s*\.{3,}\s*(\d{4})\b")
-_LAST4_ENDING = re.compile(
-    r"\bending(?:\s+in)?\s+(\d{4})\b", re.IGNORECASE
-)
+_HASH_DOTS_PREFIX = re.compile(r"#\s*\.{3,}\s*$")
+_ENDING_PREFIX = re.compile(r"\bending(?:\s+in)?\s+$", re.IGNORECASE)
+
 _CVV = re.compile(
     r"\b(?:CVV|CVC|CID|security\s+code)\b\s*(?:is\s+|[:=]\s*)?(\d{3,4})\b",
     re.IGNORECASE,
@@ -30,7 +34,14 @@ _CVV = re.compile(
 _ROUTING = re.compile(
     r"\brouting(?:\s+(?:number|no\.?))?[\s:#]*(\d{9})\b", re.IGNORECASE
 )
-_EMAIL = re.compile(r"[\w.+\-]+@[\w\-]+(?:\.[\w\-]+)+")
+
+_AT_SIGN = re.compile(r"@")
+_LOCAL_PART_SUFFIX = re.compile(r"[\w.+\-]+$")
+_DOMAIN_PREFIX = re.compile(r"^[\w\-]+(?:\.[\w\-]+)+")
+
+_LAST4_WINDOW = 64
+_LOCAL_PART_WINDOW = 64
+_DOMAIN_WINDOW = 255
 
 
 def _aba_checksum_ok(digits: str) -> bool:
@@ -41,38 +52,69 @@ def _aba_checksum_ok(digits: str) -> bool:
     return total % 10 == 0
 
 
-RULES: tuple[RegexRule, ...] = (
-    RegexRule("last4_masked", _LAST4_MASKED, "credit_card_last4"),
-    RegexRule("last4_hash_dots", _LAST4_HASH_DOTS, "credit_card_last4"),
-    RegexRule("last4_ending", _LAST4_ENDING, "credit_card_last4"),
-    RegexRule("cvv", _CVV, "secret"),
-    RegexRule("aba_routing", _ROUTING, "account_number", validator=_aba_checksum_ok),
-    RegexRule("email", _EMAIL, "private_email", group=0),
-)
+def _scan_last4(text: str) -> Iterator[dict]:
+    """4-digit groups preceded by a partial-card shorthand.
+
+    Covers bullet/X/asterisk masks (`•••• 3421`, `XXXX-9982`, `****4444`),
+    `#...1117` shorthand, and `ending [in] NNNN`.
+    """
+    for m in _FOUR_DIGITS_WORD.finditer(text):
+        start, end = m.start(), m.end()
+        ctx = text[max(0, start - _LAST4_WINDOW):start]
+        if (_MASK_PREFIX.search(ctx)
+                or _HASH_DOTS_PREFIX.search(ctx)
+                or _ENDING_PREFIX.search(ctx)):
+            yield {
+                "label": "credit_card_last4",
+                "start": start,
+                "end": end,
+                "text": m.group(0),
+                "score": 1.0,
+            }
+
+
+def _scan_emails(text: str) -> Iterator[dict]:
+    for m in _AT_SIGN.finditer(text):
+        at = m.start()
+        left_ctx = text[max(0, at - _LOCAL_PART_WINDOW):at]
+        right_ctx = text[at + 1:at + 1 + _DOMAIN_WINDOW]
+        lm = _LOCAL_PART_SUFFIX.search(left_ctx)
+        rm = _DOMAIN_PREFIX.match(right_ctx)
+        if lm and rm:
+            start = at - len(lm.group(0))
+            end = at + 1 + len(rm.group(0))
+            yield {
+                "label": "private_email",
+                "start": start,
+                "end": end,
+                "text": text[start:end],
+                "score": 1.0,
+            }
 
 
 def regex_spans(text: str) -> list[dict]:
     """Run deterministic regex rules across the full text.
 
-    Returned spans are confidence-1.0 because they encode hard patterns
-    (mask-prefix + 4 digits, ABA checksum, labelled CVV, literal @).
+    Emits score-1.0 spans for: partial credit-card shorthands
+    (credit_card_last4), CVV/CVC/CID/security codes (secret), ABA routing
+    numbers (account_number, checksum-validated), and every email
+    (private_email).
     """
-    out: list[dict] = []
-    for rule in RULES:
-        for m in rule.pattern.finditer(text):
-            start, end = m.span(rule.group)
-            if start == end:
-                continue
-            surface = text[start:end]
-            if rule.validator and not rule.validator(surface):
-                continue
-            out.append({
-                "label": rule.label,
-                "start": start,
-                "end": end,
-                "text": surface,
-                "score": 1.0,
-            })
+    out: list[dict] = list(_scan_last4(text))
+
+    for m in _CVV.finditer(text):
+        start, end = m.span(1)
+        out.append({"label": "secret", "start": start, "end": end,
+                    "text": text[start:end], "score": 1.0})
+
+    for m in _ROUTING.finditer(text):
+        start, end = m.span(1)
+        digits = text[start:end]
+        if _aba_checksum_ok(digits):
+            out.append({"label": "account_number", "start": start, "end": end,
+                        "text": digits, "score": 1.0})
+
+    out.extend(_scan_emails(text))
     return out
 
 

@@ -18,7 +18,7 @@ def test_defaults_match_spec(monkeypatch):
     assert s.chunk_overlap_tokens == 512
     assert s.smart_split is True
     assert s.rate_limit_enabled is True
-    assert s.rate_limit_per_ip == "60/10minutes"
+    assert s.rate_limit_per_ip == "30/10minutes"
     assert s.max_batch_size == 32
     assert s.max_batch_total_tokens == 200_000
     assert s.max_concurrent_inferences == 2

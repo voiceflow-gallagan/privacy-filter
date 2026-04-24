@@ -18,7 +18,7 @@ services:
       - MAX_BATCH_SIZE=${MAX_BATCH_SIZE:-32}
       - MAX_BATCH_TOTAL_TOKENS=${MAX_BATCH_TOTAL_TOKENS:-200000}
       - RATE_LIMIT_ENABLED=${RATE_LIMIT_ENABLED:-true}
-      - RATE_LIMIT_PER_IP=${RATE_LIMIT_PER_IP:-60/10minutes}
+      - RATE_LIMIT_PER_IP=${RATE_LIMIT_PER_IP:-30/10minutes}
     volumes:
       - pii_model_cache:/app/model_cache
     healthcheck:
