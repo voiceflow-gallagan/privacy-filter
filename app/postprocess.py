@@ -41,6 +41,10 @@ _SPOKEN_ENDING_KEYWORD = re.compile(
     r"\bending(?:\s+in)?\s+",
     re.IGNORECASE,
 )
+_SPOKEN_EXPIRY_KEYWORD = re.compile(
+    r"\b(?:expir(?:y|es|ed|ation)|exp\.?)\b[\s:=]*(?:is\s+)?",
+    re.IGNORECASE,
+)
 _KEYWORD_BRIDGE_GAP = 20
 _ROUTING = re.compile(
     r"\brouting(?:\s+(?:number|no\.?))?[\s:#]*(\d{9})\b", re.IGNORECASE
@@ -216,6 +220,7 @@ def _scan_spoken(text: str) -> Iterator[dict]:
     """
     cvv_keyword_ends: list[int] = [m.end() for m in _SPOKEN_CVV_KEYWORD.finditer(text)]
     ending_keyword_ends: list[int] = [m.end() for m in _SPOKEN_ENDING_KEYWORD.finditer(text)]
+    expiry_keyword_ends: list[int] = [m.end() for m in _SPOKEN_EXPIRY_KEYWORD.finditer(text)]
 
     for group in extract_groups(text):
         n = len(group.digits)
@@ -264,6 +269,21 @@ def _scan_spoken(text: str) -> Iterator[dict]:
                 if 0 <= group_start - k_end <= _KEYWORD_BRIDGE_GAP:
                     yield {
                         "label": "credit_card_last4",
+                        "start": span_start,
+                        "end": span_end,
+                        "text": text[span_start:span_end],
+                        "score": 1.0,
+                    }
+                    break
+
+        # Rule 4: spoken card expiry (MMYY packed). "Expiry is zero nine,
+        # twenty-eight" → digits "0928" → private_date. Requires the teens
+        # / compound-tens grammar in spoken_digits to reach 4 digits.
+        if len(group.digits) == 4:
+            for k_end in expiry_keyword_ends:
+                if 0 <= group_start - k_end <= _KEYWORD_BRIDGE_GAP:
+                    yield {
+                        "label": "private_date",
                         "start": span_start,
                         "end": span_end,
                         "text": text[span_start:span_end],

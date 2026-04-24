@@ -57,11 +57,49 @@ HUNDRED_WORDS: frozenset[str] = frozenset({
     "hundert",         # DE
 })
 
+# Teens (10-19): each emits exactly two digits. Used for spoken 4-digit
+# expiries, ages, and two-word years ("nineteen eighty-two" → 19 then 82).
+# FR/DE use hyphenated or agglutinative forms for 17-19 — those get parsed
+# via the TENS + DIGIT compound path at the grammar level, or via German
+# single-word compounds (siebzehn = 17) already listed.
+TEEN_WORDS: dict[str, int] = {
+    # English
+    "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14,
+    "fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18, "nineteen": 19,
+    # French
+    "dix": 10, "onze": 11, "douze": 12, "treize": 13, "quatorze": 14,
+    "quinze": 15, "seize": 16,
+    # Spanish
+    "diez": 10, "once": 11, "doce": 12, "trece": 13, "catorce": 14, "quince": 15,
+    # German
+    "zehn": 10, "elf": 11, "zwölf": 12, "dreizehn": 13, "vierzehn": 14,
+    "fünfzehn": 15, "sechzehn": 16, "siebzehn": 17, "achtzehn": 18, "neunzehn": 19,
+}
+
+# Tens (20, 30, …, 90). Combined with a trailing DIGIT via hyphen or short
+# SEP to build compounds like "twenty-eight" → 28, "eighty-two" → 82.
+TENS_WORDS: dict[str, int] = {
+    # English
+    "twenty": 20, "thirty": 30, "forty": 40, "fifty": 50,
+    "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90,
+    # French
+    "vingt": 20, "trente": 30, "quarante": 40, "cinquante": 50,
+    "soixante": 60,
+    # Spanish
+    "veinte": 20, "treinta": 30, "cuarenta": 40, "cincuenta": 50,
+    "sesenta": 60, "setenta": 70, "ochenta": 80, "noventa": 90,
+    # German
+    "zwanzig": 20, "dreißig": 30, "vierzig": 40, "fünfzig": 50,
+    "sechzig": 60, "siebzig": 70, "achtzig": 80, "neunzig": 90,
+}
+
 
 class TokenKind(str, Enum):
     DIGIT = "DIGIT"
     MULT = "MULT"
     HUNDRED = "HUNDRED"
+    TEEN = "TEEN"     # 10-19, emits 2 digits
+    TENS = "TENS"     # 20/30/…/90, emits 2 digits (compounds with DIGIT)
     SEP = "SEP"
     OTHER = "OTHER"
 
@@ -86,6 +124,10 @@ def _classify_word(word: str) -> tuple[TokenKind, Optional[int]]:
     lw = word.lower()
     if lw in DIGIT_WORDS:
         return TokenKind.DIGIT, DIGIT_WORDS[lw]
+    if lw in TEEN_WORDS:
+        return TokenKind.TEEN, TEEN_WORDS[lw]
+    if lw in TENS_WORDS:
+        return TokenKind.TENS, TENS_WORDS[lw]
     if lw in MULT_WORDS:
         return TokenKind.MULT, MULT_WORDS[lw]
     if lw in HUNDRED_WORDS:
@@ -161,6 +203,33 @@ def extract_groups(text: str) -> list[DigitGroup]:
             if len(tok.text) > _MAX_SEP_CHARS:
                 flush()
             i += 1
+        elif tok.kind == TokenKind.TEEN:
+            # Teens emit exactly 2 digits (10-19). The compound span covers
+            # just this word.
+            current_digits.extend(list(f"{tok.value:02d}"))
+            current_spans.extend([(tok.start, tok.end)] * 2)
+            i += 1
+            continue
+        elif tok.kind == TokenKind.TENS:
+            # Tens (20/30/…/90) optionally combine with a trailing DIGIT via
+            # a short SEP (hyphen or space) to form compounds: "twenty-eight"
+            # → 28. Without a trailing DIGIT, emit the bare ten ("20").
+            la = i + 1
+            if (la < len(tokens)
+                    and tokens[la].kind == TokenKind.SEP
+                    and len(tokens[la].text) <= _MAX_SEP_CHARS):
+                la += 1
+            if la < len(tokens) and tokens[la].kind == TokenKind.DIGIT:
+                combined = (tok.value or 0) + (tokens[la].value or 0)
+                compound_span = (tok.start, tokens[la].end)
+                current_digits.extend(list(f"{combined:02d}"))
+                current_spans.extend([compound_span] * 2)
+                i = la + 1
+                continue
+            current_digits.extend(list(f"{(tok.value or 0):02d}"))
+            current_spans.extend([(tok.start, tok.end)] * 2)
+            i += 1
+            continue
         elif tok.kind == TokenKind.MULT:
             # MULT must be followed (optionally via one short SEP) by a DIGIT.
             nxt_idx = i + 1

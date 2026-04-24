@@ -171,3 +171,37 @@ def test_mixed_language_digits_in_one_group():
 def test_fr_hundred_cent():
     groups = extract_groups("zéro sept neuf cent quatre cinq")
     assert groups[0].digits == "0790045"
+
+
+def test_teens_emit_two_digits():
+    # "one two three fifteen" → "123" + "15" = "12315" (5 digits)
+    groups = extract_groups("one two three fifteen")
+    assert len(groups) == 1
+    assert groups[0].digits == "12315"
+
+
+def test_compound_tens_twenty_eight():
+    # "zero nine, twenty-eight" → "0928"
+    groups = extract_groups("zero nine, twenty-eight")
+    assert len(groups) == 1
+    assert groups[0].digits == "0928"
+
+
+def test_year_pattern_nineteen_eighty_two():
+    groups = extract_groups("nineteen eighty-two")
+    assert len(groups) == 1
+    assert groups[0].digits == "1982"
+
+
+def test_bare_ten_without_digit():
+    # "one two thirty" → "12" + "30" = "1230"
+    groups = extract_groups("one two thirty")
+    assert len(groups) == 1
+    assert groups[0].digits == "1230"
+
+
+def test_de_teen_siebzehn():
+    # German 17 is a single word; no hyphen parsing needed.
+    # null + eins + siebzehn → 0 + 1 + 17 → "0117"
+    groups = extract_groups("null eins siebzehn")
+    assert groups[0].digits == "0117"

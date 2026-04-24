@@ -235,6 +235,24 @@ def test_scan_spoken_short_run_is_not_phone():
                    for s in _scan_spoken(text))
 
 
+def test_scan_spoken_expiry_keyword_captures_compound_year():
+    from app.postprocess import _scan_spoken
+    text = "Expiry is zero nine, twenty-eight"
+    spans = list(_scan_spoken(text))
+    dates = [s for s in spans if s["label"] == "private_date"]
+    assert len(dates) == 1
+    assert "zero nine" in text[dates[0]["start"]:dates[0]["end"]]
+    assert "twenty-eight" in text[dates[0]["start"]:dates[0]["end"]]
+
+
+def test_scan_spoken_expiry_alternative_keyword_forms():
+    from app.postprocess import _scan_spoken
+    for prefix in ["expires", "expired", "expiration date is", "exp"]:
+        text = f"{prefix} zero nine, twenty-eight"
+        spans = list(_scan_spoken(text))
+        assert any(s["label"] == "private_date" for s in spans), prefix
+
+
 def test_scan_spoken_cvv_keyword_captures_spoken_digits():
     from app.postprocess import _scan_spoken
     text = "Security code is three, nine, two."
