@@ -16,22 +16,42 @@ class DigitGroup:
     spans: list[tuple[int, int]]
 
 
-# Merged dict across EN/FR/ES/DE. Populated incrementally; EN first.
 DIGIT_WORDS: dict[str, int] = {
     # English
     "zero": 0, "oh": 0, "o": 0,
     "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
     "six": 6, "seven": 7, "eight": 8, "nine": 9,
+    # French
+    "zéro": 0,
+    "un": 1, "deux": 2, "trois": 3, "quatre": 4, "cinq": 5,
+    "sept": 7, "huit": 8, "neuf": 9,
+    # (French "six" collides with English → already 6; OK)
+    # Spanish
+    "cero": 0,
+    "uno": 1, "dos": 2, "tres": 3, "cuatro": 4, "cinco": 5,
+    "seis": 6, "siete": 7, "ocho": 8, "nueve": 9,
+    # German
+    "null": 0,
+    "eins": 1, "zwei": 2, "drei": 3, "vier": 4, "fünf": 5,
+    "sechs": 6, "sieben": 7, "acht": 8, "neun": 9,
 }
 
-# Multiplier prefixes: word → repeat count.
 MULT_WORDS: dict[str, int] = {
+    # English
     "double": 2, "triple": 3,
+    # French
+    "doublé": 2,
+    # Spanish
+    "doble": 2,
+    # German
+    "doppel": 2, "dreifach": 3,
 }
 
-# "hundred" equivalents across languages.
 HUNDRED_WORDS: frozenset[str] = frozenset({
-    "hundred",
+    "hundred",         # EN
+    "cent",            # FR
+    "cien", "ciento",  # ES
+    "hundert",         # DE
 })
 
 

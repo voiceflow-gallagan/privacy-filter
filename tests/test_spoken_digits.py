@@ -144,3 +144,30 @@ def test_extract_groups_hundred_does_not_absorb_trailing_digits():
     )
     assert len(groups) == 1
     assert groups[0].digits == "07700900783"
+
+
+def test_fr_digits():
+    groups = extract_groups("zéro un deux trois quatre cinq")
+    assert len(groups) == 1
+    assert groups[0].digits == "012345"
+
+
+def test_es_digits():
+    groups = extract_groups("cero uno dos tres cuatro cinco")
+    assert groups[0].digits == "012345"
+
+
+def test_de_digits():
+    groups = extract_groups("null eins zwei drei vier fünf")
+    assert groups[0].digits == "012345"
+
+
+def test_mixed_language_digits_in_one_group():
+    # Merged dict means EN + FR + DE + ES in the same run parse cleanly.
+    groups = extract_groups("zero uno zwei three four five")
+    assert groups[0].digits == "012345"
+
+
+def test_fr_hundred_cent():
+    groups = extract_groups("zéro sept neuf cent quatre cinq")
+    assert groups[0].digits == "0790045"
