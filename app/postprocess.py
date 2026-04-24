@@ -28,6 +28,16 @@ _MASK_PREFIX = re.compile(
 )
 _HASH_DOTS_PREFIX = re.compile(r"#\s*\.{3,}\s*$")
 _ENDING_PREFIX = re.compile(r"\bending(?:\s+in)?\s+$", re.IGNORECASE)
+# Phone-context cue words within the wider lookback window. When present,
+# a "ending in NNNN" match should be labeled phone_last4 instead of the
+# default credit_card_last4 — transcripts often say "phone number on file
+# ending in 4421" where the last-4 belongs to the phone, not a card.
+_PHONE_CONTEXT_CUE = re.compile(
+    r"\b(?:phone|mobile|cell|telephone|contact\s+number|"
+    r"callback\s+number|numéro\s+de\s+téléphone|portable)\b",
+    re.IGNORECASE,
+)
+_LAST4_PHONE_CONTEXT_WINDOW = 128
 
 _CVV = re.compile(
     r"\b(?:CVV|CVC|CID|security\s+code)\b\s*(?:is\s+|[:=]\s*)?(\d{3,4})\b",
@@ -186,21 +196,32 @@ def _scan_last4(text: str) -> Iterator[dict]:
     """4-digit groups preceded by a partial-card shorthand.
 
     Covers bullet/X/asterisk masks (`•••• 3421`, `XXXX-9982`, `****4444`),
-    `#...1117` shorthand, and `ending [in] NNNN`.
+    `#...1117` shorthand, and `ending [in] NNNN`. The default label is
+    `credit_card_last4`, but `ending [in] NNNN` with a phone cue word
+    ("phone", "mobile", "cell", …) in the wider 128-char lookback is
+    routed to `phone_last4` so downstream consumers don't mislabel.
     """
     for m in _FOUR_DIGITS_WORD.finditer(text):
         start, end = m.start(), m.end()
         ctx = text[max(0, start - _LAST4_WINDOW):start]
-        if (_MASK_PREFIX.search(ctx)
-                or _HASH_DOTS_PREFIX.search(ctx)
-                or _ENDING_PREFIX.search(ctx)):
-            yield {
-                "label": "credit_card_last4",
-                "start": start,
-                "end": end,
-                "text": m.group(0),
-                "score": 1.0,
-            }
+        is_masked = _MASK_PREFIX.search(ctx) or _HASH_DOTS_PREFIX.search(ctx)
+        is_ending = _ENDING_PREFIX.search(ctx)
+        if not (is_masked or is_ending):
+            continue
+
+        label = "credit_card_last4"
+        if is_ending and not is_masked:
+            wide_ctx = text[max(0, start - _LAST4_PHONE_CONTEXT_WINDOW):start]
+            if _PHONE_CONTEXT_CUE.search(wide_ctx):
+                label = "phone_last4"
+
+        yield {
+            "label": label,
+            "start": start,
+            "end": end,
+            "text": m.group(0),
+            "score": 1.0,
+        }
 
 
 def _scan_emails(text: str) -> Iterator[dict]:

@@ -273,6 +273,25 @@ def test_scan_spoken_ending_keyword_captures_spoken_last4():
     assert "four four five one" in run
 
 
+def test_ending_with_phone_context_is_phone_last4():
+    text = "I also see a phone number on file ending in 4421."
+    spans = regex_spans(text)
+    assert _texts(spans, "phone_last4") == ["4421"]
+    # Must NOT also emit credit_card_last4 for the same run.
+    assert _texts(spans, "credit_card_last4") == []
+
+
+def test_ending_without_phone_context_stays_credit_card_last4():
+    text = "Mastercard ending 8842 was charged"
+    assert _texts(regex_spans(text), "credit_card_last4") == ["8842"]
+    assert _texts(regex_spans(text), "phone_last4") == []
+
+
+def test_ending_with_mobile_cue():
+    text = "Mobile ending 1234 was verified"
+    assert _texts(regex_spans(text), "phone_last4") == ["1234"]
+
+
 def test_us_phone_paren_includes_leading_paren():
     text = "User: It's (347) 555-4421."
     spans = _texts(regex_spans(text), "private_phone")

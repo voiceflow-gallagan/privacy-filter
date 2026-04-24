@@ -11,6 +11,7 @@ def test_known_labels():
         "private_date", "secret",
         "credit_card_last4",
         "credit_card_number",
+        "phone_last4",
         "ip_address",
     })
 
