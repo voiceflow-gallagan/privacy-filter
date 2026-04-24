@@ -125,3 +125,22 @@ def test_extract_groups_triple_four():
     groups = extract_groups("one two triple-four five six")
     assert len(groups) == 1
     assert groups[0].digits == "1244456"
+
+
+def test_extract_groups_nine_hundred_emits_900():
+    groups = extract_groups("zero seven nine hundred four five")
+    assert len(groups) == 1
+    assert groups[0].digits == "0790045"
+    # The three emitted digits from "nine hundred" (9, 0, 0) all share the
+    # compound span covering "nine hundred".
+    nine_hundred_spans = groups[0].spans[2:5]
+    assert len(set(nine_hundred_spans)) == 1
+
+
+def test_extract_groups_hundred_does_not_absorb_trailing_digits():
+    # Phone pattern: "nine hundred, seven eight three" → 900 then 783.
+    groups = extract_groups(
+        "zero seven seven double-oh nine hundred seven eight three"
+    )
+    assert len(groups) == 1
+    assert groups[0].digits == "07700900783"

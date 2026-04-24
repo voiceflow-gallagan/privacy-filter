@@ -122,9 +122,23 @@ def extract_groups(text: str) -> list[DigitGroup]:
     while i < len(tokens):
         tok = tokens[i]
         if tok.kind == TokenKind.DIGIT:
+            # Look ahead for HUNDRED (optionally via one short SEP).
+            la = i + 1
+            if (la < len(tokens)
+                    and tokens[la].kind == TokenKind.SEP
+                    and len(tokens[la].text) <= _MAX_SEP_CHARS):
+                la += 1
+            if la < len(tokens) and tokens[la].kind == TokenKind.HUNDRED:
+                compound_span = (tok.start, tokens[la].end)
+                # Emit DIGIT + "00" (exactly 3 chars)
+                current_digits.extend([str(tok.value), "0", "0"])
+                current_spans.extend([compound_span] * 3)
+                i = la + 1
+                continue
             current_digits.append(str(tok.value))
             current_spans.append((tok.start, tok.end))
             i += 1
+            continue
         elif tok.kind == TokenKind.SEP:
             if len(tok.text) > _MAX_SEP_CHARS:
                 flush()
