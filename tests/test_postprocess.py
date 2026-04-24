@@ -171,3 +171,41 @@ def test_scan_spoken_rejects_luhn_invalid_long_run():
     )
     spans = list(_scan_spoken(text))
     assert not any(s["label"] == "credit_card_number" for s in spans)
+
+
+def test_scan_spoken_phone_double_oh_nine_hundred():
+    from app.postprocess import _scan_spoken
+    text = (
+        "Callback number is zero seven seven double-oh, "
+        "nine hundred, seven eight three."
+    )
+    spans = list(_scan_spoken(text))
+    phones = [s for s in spans if s["label"] == "private_phone"]
+    assert len(phones) == 1
+    # Span covers the full spoken run
+    assert "zero seven seven" in text[phones[0]["start"]:phones[0]["end"]]
+    assert "seven eight three" in text[phones[0]["start"]:phones[0]["end"]]
+
+
+def test_scan_spoken_card_beats_phone_on_same_group():
+    from app.postprocess import _scan_spoken
+    # Valid 16-digit Luhn card — must emit ONLY credit_card_number, not phone.
+    # NOTE: use a card whose digit sequence is Luhn-valid. The full-card
+    # fixture in test_scan_spoken_luhn_card_emits_credit_card_number (earlier
+    # in this file) is known-Luhn-valid; reuse its digit pattern.
+    text = (
+        "four, seven, one, six, three, eight, five, two, "
+        "nine, four, oh, one, two, eight, eight, seven"
+    )
+    spans = list(_scan_spoken(text))
+    labels = [s["label"] for s in spans]
+    assert "credit_card_number" in labels
+    assert "private_phone" not in labels
+
+
+def test_scan_spoken_short_run_is_not_phone():
+    from app.postprocess import _scan_spoken
+    text = "Room one two three four five six seven for the meeting."
+    # 7 digits — below the 10-digit phone threshold → no phone span.
+    assert not any(s["label"] == "private_phone"
+                   for s in _scan_spoken(text))

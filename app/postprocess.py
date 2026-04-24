@@ -111,7 +111,9 @@ def _scan_emails(text: str) -> Iterator[dict]:
 def _scan_spoken(text: str) -> Iterator[dict]:
     """Emit spans for PII expressed as spelled-out digits.
 
-    v1: Rule 1 (Luhn-validated credit card). Rules 2-3 land in later tasks.
+    Rule 1: Luhn-validated credit card (13-19 digits).
+    Rule 2: phone / long numeric ID (10-15 digits), only if Rule 1 missed.
+    Rule 3 (CVV / ending keyword) lands in Task 10.
     """
     for group in extract_groups(text):
         if _luhn_valid(group.digits):
@@ -119,6 +121,18 @@ def _scan_spoken(text: str) -> Iterator[dict]:
             end = group.spans[-1][1]
             yield {
                 "label": "credit_card_number",
+                "start": start,
+                "end": end,
+                "text": text[start:end],
+                "score": 1.0,
+            }
+            continue
+
+        if 10 <= len(group.digits) <= 15:
+            start = group.spans[0][0]
+            end = group.spans[-1][1]
+            yield {
+                "label": "private_phone",
                 "start": start,
                 "end": end,
                 "text": text[start:end],
