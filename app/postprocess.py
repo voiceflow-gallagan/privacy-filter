@@ -37,7 +37,41 @@ _PHONE_CONTEXT_CUE = re.compile(
     r"callback\s+number|numéro\s+de\s+téléphone|portable)\b",
     re.IGNORECASE,
 )
+# SSN-context cue words. "last four digits of your Social Security Number"
+# → ssn_last4, not credit_card_last4.
+_SSN_CONTEXT_CUE = re.compile(
+    r"\b(?:SSN|SS#|social\s+security(?:\s+(?:number|no\.?))?)\b",
+    re.IGNORECASE,
+)
 _LAST4_PHONE_CONTEXT_WINDOW = 128
+
+# Full US SSN: 3-2-4 with hyphens. Unambiguous format, emit ssn directly.
+_SSN_FULL = re.compile(r"\b\d{3}-\d{2}-\d{4}\b")
+
+# SSN last-4 is an "last four" + "Social Security" pair followed by a
+# 4-digit group within a bounded window. Phrasings like "please confirm
+# the last four digits of your Social Security Number 7742" bridge the
+# keyword and the digits across ~30 chars, so the tight ending-prefix
+# anchor isn't enough — we scan for the keyword pair first, then look
+# ahead for the first 4-digit group within the post-keyword budget.
+_SSN_LAST4_KEYWORDS = re.compile(
+    r"\blast\s+four(?:\s+digits)?\b[^\n]{0,80}?\bsocial\s+security\b",
+    re.IGNORECASE,
+)
+_FOUR_DIGITS_PLAIN = re.compile(r"\b(\d{4})\b")
+_SSN_LAST4_POST_WINDOW = 40
+
+# OTP / verification code: keyword then a 4-8 digit group within a short
+# post-keyword window. Same two-step structure as SSN: match the cue,
+# look ahead for the digits. Tolerates connectives like "to you:",
+# "sent to your phone", "sent was" that a single fused regex can't cover.
+_OTP_KEYWORDS = re.compile(
+    r"\b(?:OTP|verification\s+code|one[-\s]?time\s+(?:password|code|pin)"
+    r"|code\s+we\s+sent|passcode|confirmation\s+code)\b",
+    re.IGNORECASE,
+)
+_OTP_DIGITS = re.compile(r"\b(\d{4,8})\b")
+_OTP_POST_WINDOW = 40
 
 _CVV = re.compile(
     r"\b(?:CVV|CVC|CID|security\s+code)\b\s*(?:is\s+|[:=]\s*)?(\d{3,4})\b",
@@ -212,7 +246,9 @@ def _scan_last4(text: str) -> Iterator[dict]:
         label = "credit_card_last4"
         if is_ending and not is_masked:
             wide_ctx = text[max(0, start - _LAST4_PHONE_CONTEXT_WINDOW):start]
-            if _PHONE_CONTEXT_CUE.search(wide_ctx):
+            if _SSN_CONTEXT_CUE.search(wide_ctx):
+                label = "ssn_last4"
+            elif _PHONE_CONTEXT_CUE.search(wide_ctx):
                 label = "phone_last4"
 
         yield {
@@ -353,6 +389,28 @@ def regex_spans(text: str) -> list[dict]:
         if _aba_checksum_ok(digits):
             out.append({"label": "account_number", "start": start, "end": end,
                         "text": digits, "score": 1.0})
+
+    for m in _SSN_FULL.finditer(text):
+        out.append({"label": "ssn", "start": m.start(), "end": m.end(),
+                    "text": m.group(0), "score": 1.0})
+
+    for m in _SSN_LAST4_KEYWORDS.finditer(text):
+        tail = text[m.end():m.end() + _SSN_LAST4_POST_WINDOW]
+        dm = _FOUR_DIGITS_PLAIN.search(tail)
+        if dm:
+            start = m.end() + dm.start(1)
+            end = m.end() + dm.end(1)
+            out.append({"label": "ssn_last4", "start": start, "end": end,
+                        "text": text[start:end], "score": 1.0})
+
+    for m in _OTP_KEYWORDS.finditer(text):
+        tail = text[m.end():m.end() + _OTP_POST_WINDOW]
+        dm = _OTP_DIGITS.search(tail)
+        if dm:
+            start = m.end() + dm.start(1)
+            end = m.end() + dm.end(1)
+            out.append({"label": "otp", "start": start, "end": end,
+                        "text": text[start:end], "score": 1.0})
 
     for m in _KV_CARD_LAST4.finditer(text):
         start, end = m.span(1)

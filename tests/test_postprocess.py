@@ -273,6 +273,40 @@ def test_scan_spoken_ending_keyword_captures_spoken_last4():
     assert "four four five one" in run
 
 
+def test_full_ssn_with_hyphens():
+    text = "full SSN please 412-88-7742 thanks"
+    assert _texts(regex_spans(text), "ssn") == ["412-88-7742"]
+
+
+def test_ssn_last_four_with_cue_word():
+    text = "please confirm the last four digits of your Social Security Number 7742"
+    spans = regex_spans(text)
+    assert _texts(spans, "ssn_last4") == ["7742"]
+    assert _texts(spans, "credit_card_last4") == []
+
+
+def test_ssn_cue_beats_phone_cue():
+    # SSN wins over phone when both appear (SSN is more specific).
+    text = "phone and SSN - last four of your Social Security 1234"
+    assert _texts(regex_spans(text), "ssn_last4") == ["1234"]
+    assert _texts(regex_spans(text), "phone_last4") == []
+
+
+def test_otp_verification_code():
+    text = "Your verification code is 884192 please enter it"
+    assert _texts(regex_spans(text), "otp") == ["884192"]
+
+
+def test_otp_passcode_variant():
+    text = "Your one-time passcode: 123456"
+    assert _texts(regex_spans(text), "otp") == ["123456"]
+
+
+def test_otp_code_we_sent():
+    text = "Enter the code we sent to you: 4851"
+    assert _texts(regex_spans(text), "otp") == ["4851"]
+
+
 def test_ending_with_phone_context_is_phone_last4():
     text = "I also see a phone number on file ending in 4421."
     spans = regex_spans(text)

@@ -13,6 +13,9 @@ def test_known_labels():
         "credit_card_number",
         "phone_last4",
         "ip_address",
+        "ssn",
+        "ssn_last4",
+        "otp",
     })
 
 
