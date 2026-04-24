@@ -33,6 +33,15 @@ _CVV = re.compile(
     r"\b(?:CVV|CVC|CID|security\s+code)\b\s*(?:is\s+|[:=]\s*)?(\d{3,4})\b",
     re.IGNORECASE,
 )
+_SPOKEN_CVV_KEYWORD = re.compile(
+    r"\b(?:CVV|CVC|CID|security\s+code)\b[\s:=]*(?:is\s+)?",
+    re.IGNORECASE,
+)
+_SPOKEN_ENDING_KEYWORD = re.compile(
+    r"\bending(?:\s+in)?\s+",
+    re.IGNORECASE,
+)
+_KEYWORD_BRIDGE_GAP = 20
 _ROUTING = re.compile(
     r"\brouting(?:\s+(?:number|no\.?))?[\s:#]*(\d{9})\b", re.IGNORECASE
 )
@@ -113,7 +122,10 @@ def _scan_spoken(text: str) -> Iterator[dict]:
 
     Rule 1: Luhn-validated credit card (13-19 digits).
     Rule 2: phone / long numeric ID (10-15 digits), only if Rule 1 missed.
-    Rule 3 (CVV / ending keyword) lands in Task 10.
+    Rule 3: keyword-anchored spoken CVV / ending-last-4. The keyword runs
+            in the original text, the digits in the spoken group; if the
+            group starts within 20 chars after a keyword hit, emit the
+            mapped label.
     """
     for group in extract_groups(text):
         if _luhn_valid(group.digits):
@@ -139,6 +151,34 @@ def _scan_spoken(text: str) -> Iterator[dict]:
                 "score": 1.0,
             }
             continue
+
+        group_start = group.spans[0][0]
+        span_start = group.spans[0][0]
+        span_end = group.spans[-1][1]
+
+        if 3 <= len(group.digits) <= 4:
+            for km in _SPOKEN_CVV_KEYWORD.finditer(text):
+                if 0 <= group_start - km.end() <= _KEYWORD_BRIDGE_GAP:
+                    yield {
+                        "label": "secret",
+                        "start": span_start,
+                        "end": span_end,
+                        "text": text[span_start:span_end],
+                        "score": 1.0,
+                    }
+                    break
+
+        if len(group.digits) == 4:
+            for km in _SPOKEN_ENDING_KEYWORD.finditer(text):
+                if 0 <= group_start - km.end() <= _KEYWORD_BRIDGE_GAP:
+                    yield {
+                        "label": "credit_card_last4",
+                        "start": span_start,
+                        "end": span_end,
+                        "text": text[span_start:span_end],
+                        "score": 1.0,
+                    }
+                    break
 
 
 def regex_spans(text: str) -> list[dict]:

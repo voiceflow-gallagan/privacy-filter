@@ -209,3 +209,23 @@ def test_scan_spoken_short_run_is_not_phone():
     # 7 digits — below the 10-digit phone threshold → no phone span.
     assert not any(s["label"] == "private_phone"
                    for s in _scan_spoken(text))
+
+
+def test_scan_spoken_cvv_keyword_captures_spoken_digits():
+    from app.postprocess import _scan_spoken
+    text = "Security code is three, nine, two."
+    spans = list(_scan_spoken(text))
+    cvv = [s for s in spans if s["label"] == "secret"]
+    assert len(cvv) == 1
+    assert "three" in text[cvv[0]["start"]:cvv[0]["end"]]
+    assert "two" in text[cvv[0]["start"]:cvv[0]["end"]]
+
+
+def test_scan_spoken_ending_keyword_captures_spoken_last4():
+    from app.postprocess import _scan_spoken
+    text = "ending in four four five one on file"
+    spans = list(_scan_spoken(text))
+    last4 = [s for s in spans if s["label"] == "credit_card_last4"]
+    assert len(last4) == 1
+    run = text[last4[0]["start"]:last4[0]["end"]]
+    assert "four four five one" in run
