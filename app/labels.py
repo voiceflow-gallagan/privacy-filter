@@ -11,6 +11,7 @@ KNOWN_LABELS: frozenset[str] = frozenset({
     "private_date",
     "secret",
     "credit_card_last4",
+    "credit_card_number",
 })
 
 
