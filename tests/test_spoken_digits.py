@@ -61,3 +61,49 @@ def test_tokenize_bounded_separator():
     tokens = list(tokenize(text))
     sep_tokens = [t for t in tokens if t.kind == TokenKind.SEP]
     assert sep_tokens, "expected at least one SEP between the digit words"
+
+
+from app.spoken_digits import extract_groups
+
+
+def test_extract_groups_simple_run():
+    text = "one two three four five"
+    groups = extract_groups(text)
+    assert len(groups) == 1
+    assert groups[0].digits == "12345"
+    assert len(groups[0].spans) == 5
+    # First digit span covers "one"
+    assert text[groups[0].spans[0][0]:groups[0].spans[0][1]] == "one"
+
+
+def test_extract_groups_drops_short_runs():
+    # Two digits is below the >=3 threshold -> no group.
+    assert extract_groups("one two") == []
+
+
+def test_extract_groups_breaks_on_other():
+    text = "one two three apple four five six"
+    groups = extract_groups(text)
+    # "apple" (OTHER) closes the first group; second group starts after.
+    assert len(groups) == 2
+    assert groups[0].digits == "123"
+    assert groups[1].digits == "456"
+
+
+def test_extract_groups_respects_long_separator():
+    # 7-char SEP run closes the group.
+    seven = ",.-,.-,"
+    assert len(seven) == 7
+    text = f"one two three{seven}four five six"
+    groups = extract_groups(text)
+    assert len(groups) == 2
+
+
+def test_extract_groups_keeps_short_separator():
+    # 6-char SEP run is fine.
+    six = ", ... "
+    assert len(six) == 6
+    text = f"one two three{six}four five six"
+    groups = extract_groups(text)
+    assert len(groups) == 1
+    assert groups[0].digits == "123456"

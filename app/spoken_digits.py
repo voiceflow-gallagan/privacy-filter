@@ -88,3 +88,51 @@ def tokenize(text: str) -> Iterator[Token]:
                         value=value, text=chunk)
         else:
             yield Token(start=start, end=end, kind=TokenKind.SEP, text=chunk)
+
+
+_MAX_SEP_CHARS = 6
+_MIN_GROUP_DIGITS = 3
+
+
+def extract_groups(text: str) -> list[DigitGroup]:
+    """Parse consecutive digit-word runs into DigitGroup objects.
+
+    A group is a maximal sequence of DIGIT tokens separated by SEP runs of
+    <= 6 characters. OTHER, MULT, HUNDRED, or a longer SEP close the group.
+    Groups with fewer than 3 emitted digits are discarded.
+
+    MULT and HUNDRED close the group in v1 of this function; Tasks 5 and 6
+    extend the behaviour to handle compound forms.
+    """
+    groups: list[DigitGroup] = []
+    current_digits: list[str] = []
+    current_spans: list[tuple[int, int]] = []
+
+    def flush() -> None:
+        if len(current_digits) >= _MIN_GROUP_DIGITS:
+            groups.append(DigitGroup(
+                digits="".join(current_digits),
+                spans=list(current_spans),
+            ))
+        current_digits.clear()
+        current_spans.clear()
+
+    tokens = list(tokenize(text))
+    i = 0
+    while i < len(tokens):
+        tok = tokens[i]
+        if tok.kind == TokenKind.DIGIT:
+            current_digits.append(str(tok.value))
+            current_spans.append((tok.start, tok.end))
+            i += 1
+        elif tok.kind == TokenKind.SEP:
+            if len(tok.text) > _MAX_SEP_CHARS:
+                flush()
+            i += 1
+        else:
+            # OTHER / MULT / HUNDRED - close the group in v1.
+            flush()
+            i += 1
+
+    flush()
+    return groups
