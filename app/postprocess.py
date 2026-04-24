@@ -73,6 +73,13 @@ _IPV4 = re.compile(
     r"(?<![\w.])(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?![\w.])"
 )
 
+# US-style parenthesised phone: (XXX) XXX-XXXX with common separator
+# variants. The model often catches "XXX) XXX-XXXX" but drops the leading
+# paren and a stray "(" is left in the redacted output.
+_US_PHONE_PAREN = re.compile(
+    r"\(\d{3}\)\s?\d{3}[-.\s]\d{4}\b"
+)
+
 # ISO-8601 timestamps including optional fractional seconds and timezone.
 # The model often fragments these ("…18.", "443Z", "443Z] session_start…"),
 # each fragment picking up a different label. Emitting one deterministic
@@ -129,6 +136,17 @@ def _is_public_ipv4(octets: tuple[int, int, int, int]) -> bool:
     if a >= 224:  # multicast + reserved
         return False
     return True
+
+
+def _scan_us_phone_paren(text: str) -> "Iterator[dict]":
+    for m in _US_PHONE_PAREN.finditer(text):
+        yield {
+            "label": "private_phone",
+            "start": m.start(),
+            "end": m.end(),
+            "text": m.group(0),
+            "score": 1.0,
+        }
 
 
 def _scan_iso8601(text: str) -> "Iterator[dict]":
@@ -328,6 +346,7 @@ def regex_spans(text: str) -> list[dict]:
     out.extend(_scan_emails(text))
     out.extend(_scan_ipv4(text))
     out.extend(_scan_iso8601(text))
+    out.extend(_scan_us_phone_paren(text))
     out.extend(_scan_spoken(text))
     return out
 

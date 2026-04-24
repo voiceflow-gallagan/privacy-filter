@@ -273,6 +273,22 @@ def test_scan_spoken_ending_keyword_captures_spoken_last4():
     assert "four four five one" in run
 
 
+def test_us_phone_paren_includes_leading_paren():
+    text = "User: It's (347) 555-4421."
+    spans = _texts(regex_spans(text), "private_phone")
+    assert "(347) 555-4421" in spans
+
+
+def test_us_phone_paren_dot_separator():
+    text = "Call (347) 555.4421 now"
+    assert "(347) 555.4421" in _texts(regex_spans(text), "private_phone")
+
+
+def test_us_phone_paren_space_separator():
+    text = "Call (347) 555 4421 now"
+    assert "(347) 555 4421" in _texts(regex_spans(text), "private_phone")
+
+
 def test_iso8601_with_fractional_seconds():
     text = "[2026-04-19T14:22:18.443Z] session_start user_id=ak_blackwell_882"
     assert _texts(regex_spans(text), "private_date") == ["2026-04-19T14:22:18.443Z"]
